@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>STEFY Dalszövegek – automatikus tesztek</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0a0820; color: #f5f3ff; padding: 16px; }
+    .ok { color: #5eead4; } .fail { color: #fb7185; font-weight: 700; }
+    li { margin: 4px 0; } #sum { font-size: 1.3rem; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <h1>Automatikus tesztek (külön teszt-adatbázisban)</h1>
+  <p>Ez az oldal egy ideiglenes, csak tesztre használt adatbázist hoz létre és a végén törli. A valódi felhasználói adatokat nem érinti.</p>
+  <div id="sum">Futás…</div>
+  <ol id="out"></ol>
+  <script type="module" src="tests.js"></script>
+</body>
+</html>
