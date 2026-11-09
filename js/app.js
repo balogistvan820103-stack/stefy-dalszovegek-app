@@ -11,7 +11,7 @@ import { setlistsView, setlistView, pickerView } from './views/setlists.js';
 import { performView } from './views/perform.js';
 import { settingsView } from './views/settings.js';
 
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.2.1';
 
 const routes = [
   { re: /^\/(?:home)?$/, view: homeView },
