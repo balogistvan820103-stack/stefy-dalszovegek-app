@@ -4,7 +4,7 @@ import * as store from '../store.js';
 import { esc, toast, confirmBox, modal, clamp, debounce, fmtISODate } from '../util.js';
 import { icon, tile } from '../icons.js';
 import { markRefrain } from '../lyrics.js';
-import { applyReaderStyle, lyricsHTML, fontPanel, mediaURL, FONT_MIN, FONT_MAX, emptyState } from '../components.js';
+import { applyReaderStyle, lyricsHTML, fontPanel, mediaURL, FONT_MIN, FONT_MAX, emptyState, fitColumns } from '../components.js';
 
 export async function readerView(ctx) {
   const id = ctx.params[0];
@@ -42,7 +42,17 @@ export async function readerView(ctx) {
     const r = store.settings('reader');
     applyReaderStyle(el, r);
     lyr.innerHTML = lyricsHTML(song.lyrics, r.highlightSections);
+    refit();
   };
+  // kéthasábos nézet fekvő tableten, ha a dal egy hasábban nem fér ki a képernyőre
+  const refit = () => requestAnimationFrame(() => {
+    if (!lyr.isConnected) return;
+    const nav = document.getElementById('bottomnav')?.getBoundingClientRect().height || 0;
+    const top = lyr.getBoundingClientRect().top + window.scrollY;
+    fitColumns(lyr, window.innerHeight - top - nav - 24);
+  });
+  const onResize = debounce(refit, 150);
+  window.addEventListener('resize', onResize);
   paint();
 
   const pop = el.querySelector('.font-pop');
@@ -114,7 +124,8 @@ export async function readerView(ctx) {
     nav: 'songs',
     el,
     actions: [favBtn, fontBtn, listBtn, editBtn],
-    cleanup: () => { panel?.flush(); saveSize.flush(); },
+    mounted: () => refit(),
+    cleanup: () => { panel?.flush(); saveSize.flush(); window.removeEventListener('resize', onResize); },
   };
 }
 

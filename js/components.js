@@ -4,6 +4,7 @@ import * as store from './store.js';
 import { esc, debounce, clamp } from './util.js';
 import { icon } from './icons.js';
 import { parseLyrics } from './lyrics.js';
+import { isPlayed } from './night.js';
 
 /* ---------------- Betűtípusok (csak a készüléken lévő rendszerbetűk – offline is működik) ---------------- */
 
@@ -47,36 +48,63 @@ export const REF_COLORS = ['#fbbf24', '#2dd4bf', '#60a5fa', '#c084fc', '#f472b6'
 export function lyricsHTML(text, highlight = true) {
   if (!text) return '<span class="lyr-empty">Ehhez a dalhoz még nincs dalszöveg. Koppints a szerkesztés gombra a hozzáadáshoz.</span>';
   const line = (inner) => `<div class="lyr-l">${inner || '<br>'}</div>`;
-  if (!highlight) return String(text).split('\n').map((l) => line(esc(l))).join('');
-  let html = ''; let open = false;
-  const close = () => { if (open) { html += '</div>'; open = false; } };
+  // A versszakok (üres sorig tartó részek) külön blokkba kerülnek, így kéthasábos
+  // nézetben a hasábhatár nem vághat ketté versszakot vagy refrént.
+  let html = ''; let st = ''; let open = false;
+  const close = () => { if (open) { st += '</div>'; open = false; } };
+  const flush = () => { close(); if (st) { html += `<div class="lyr-st">${st}</div>`; st = ''; } };
+  if (!highlight) {
+    for (const l of String(text).split('\n')) {
+      if (l.trim()) st += line(esc(l)); else { flush(); html += line(''); }
+    }
+    flush();
+    return html;
+  }
   for (const p of parseLyrics(text)) {
     if (p.ref) {
       // új jel = új refrénblokk (két egymást követő refrén külön keretet kap)
       if (p.kind === 'ref-label' || p.mark) close();
-      if (!open) { html += '<div class="lyr-ref">'; open = true; }
-      if (p.kind === 'ref-label') html += line(`<span class="lyr-ref-label">${esc(p.text)}</span>`);
-      else html += line((p.mark ? `<span class="lyr-ref-mark">${esc(p.mark)}</span> ` : '') + esc(p.text));
+      if (!open) { st += '<div class="lyr-ref">'; open = true; }
+      if (p.kind === 'ref-label') st += line(`<span class="lyr-ref-label">${esc(p.text)}</span>`);
+      else st += line((p.mark ? `<span class="lyr-ref-mark">${esc(p.mark)}</span> ` : '') + esc(p.text));
       continue;
     }
     close();
-    if (p.kind === 'gap') html += line('');
-    else if (p.kind === 'section') html += line(`<span class="lyr-sec">${esc(p.text)}</span>`);
-    else html += line(esc(p.text));
+    if (p.kind === 'gap') { flush(); html += line(''); }
+    else if (p.kind === 'section') st += line(`<span class="lyr-sec">${esc(p.text)}</span>`);
+    else st += line(esc(p.text));
   }
-  close();
+  flush();
   return html;
+}
+
+/**
+ * Kéthasábos nézet: csak fekvő tableten, csak ha egy hasábban nem fér ki,
+ * és csak ha a Beállításokban be van kapcsolva. avail = a rendelkezésre álló magasság (px).
+ * Visszaad: true, ha két hasábra váltott.
+ */
+export function fitColumns(lyr, avail) {
+  if (!lyr) return false;
+  lyr.classList.remove('two-col');
+  if (store.settings('app').twoColumns === false) return false;
+  const W = window.innerWidth; const H = window.innerHeight;
+  // telefon (álló és fekvő) és álló tablet: mindig egy hasáb
+  if (!(W > H && W >= 900 && H >= 560)) return false;
+  if (!(avail > 0) || lyr.scrollHeight <= avail) return false;
+  lyr.classList.add('two-col');
+  return true;
 }
 
 /* ---------------- Dalkártya ---------------- */
 
 export function songCardHTML(song, { draggable = false, match = null, showArtist = store.settings('app').showArtist, href, selectable = false, selected = false } = {}) {
   const badge = match === 'lyrics' ? '<span class="match-badge">szövegben</span>' : (match === 'meta' ? '<span class="match-badge meta">előadó / címke</span>' : '');
-  return `<div class="song-card${song.favorite ? ' is-fav' : ''}${selected ? ' is-selected' : ''}" data-id="${esc(song.id)}" style="--accent:${esc(store.songColor(song))}"${selectable ? ` aria-selected="${selected}"` : ''}>
+  const played = isPlayed(song.id);
+  return `<div class="song-card${song.favorite ? ' is-fav' : ''}${selected ? ' is-selected' : ''}${played ? ' is-played' : ''}" data-id="${esc(song.id)}" style="--accent:${esc(store.songColor(song))}"${selectable ? ` aria-selected="${selected}"` : ''}>
     ${selectable ? `<span class="sel-box" aria-hidden="true">${icon('check')}</span>` : ''}
     ${draggable ? `<button class="grip" type="button" aria-label="Áthelyezés húzással">${icon('grip')}</button>` : ''}
     <a class="song-link" href="${esc(href || `#/song/${encodeURIComponent(song.id)}`)}">
-      <span class="song-title">${esc(song.title)}</span>
+      <span class="song-title">${played ? `<span class="played-mark" title="Ma este már lejátszva" aria-label="lejátszva">${icon('check')}</span>` : ''}${esc(song.title)}</span>
       ${showArtist && song.artist ? `<span class="song-artist">${esc(song.artist)}</span>` : ''}
       ${badge}
     </a>

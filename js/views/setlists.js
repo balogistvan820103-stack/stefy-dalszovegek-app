@@ -5,6 +5,7 @@ import { esc, toast, confirmBox, modal, fmtISODate, todayISO, debounce } from '.
 import { icon, tile } from '../icons.js';
 import { emptyState } from '../components.js';
 import { makeSortable } from '../dnd.js';
+import * as night from '../night.js';
 
 const LIST_COLORS = ['purple', 'blue', 'teal', 'gold', 'red', 'pink', 'orange', 'green'];
 
@@ -94,6 +95,9 @@ export function setlistView(ctx) {
     const l = store.state.setlists.get(id);
     const songs = store.setlistSongs(id);
     const locked = store.settings('app').performLock;
+    const played = night.playedSet();
+    const tonight = night.tonightIds(l);
+    const nPlayed = songs.filter((s) => played.has(s.id)).length;
     el.innerHTML = `
       <div class="card setlist-head">
         ${tile('mic', 'purple', 'tile-lg')}
@@ -104,14 +108,18 @@ export function setlistView(ctx) {
         <button type="button" class="btn btn-primary btn-lg" data-act="perform" ${songs.length ? '' : 'disabled'}>${icon('play')} Fellépés indítása</button>
         <a class="btn btn-teal btn-lg${locked ? ' disabled' : ''}" href="#/setlist/${encodeURIComponent(id)}/add" data-act="add">${icon('plus')} Dalok hozzáadása</a>
         <button type="button" class="btn btn-ghost" data-act="dup">${icon('copy')} Duplikálás</button>
+        ${played.size || night.hasTonightOrder(id) ? `<button type="button" class="btn btn-ghost" data-act="new-night">${icon('reset')} Új este – jelölések törlése</button>` : ''}
         <button type="button" class="btn ${locked ? 'btn-red' : 'btn-ghost'}" data-act="lock">${icon(locked ? 'lock' : 'unlock')} ${locked ? 'Zárolva' : 'Zárolás'}</button>
       </div>
+      ${night.hasTonightOrder(id) ? `<div class="tonight-note">${icon('search')}<span>Ma este vendégkérésekkel módosított sorrend fut (${night.requestedSet(id).size} kérés). A mentett lista – amit lent látsz – nem változott.</span>
+        <button type="button" class="btn btn-ghost btn-sm" data-act="reset-order">Mentett sorrend vissza</button></div>` : ''}
+      ${nPlayed ? `<p class="played-note">${icon('check')} Ma este már lejátszva: <b>${nPlayed} / ${songs.length}</b> dal</p>` : ''}
       ${songs.length ? `<p class="muted small">${locked ? `${icon('lock')} Zárolt mód: a sorrend és a lista nem módosítható.` : `${icon('grip')} A sorrendet a fogantyúval húzva módosíthatod – automatikusan mentődik.`}</p>
         <ol class="set-list${locked ? '' : ' can-drag'}">${songs.map((s, i) => `
-          <li class="set-row" data-id="${esc(s.id)}" style="--accent:${esc(store.songColor(s))}">
+          <li class="set-row${played.has(s.id) ? ' is-played' : ''}" data-id="${esc(s.id)}" style="--accent:${esc(store.songColor(s))}">
             ${locked ? '' : `<button type="button" class="grip" aria-label="Áthelyezés húzással">${icon('grip')}</button>`}
             <span class="set-num">${i + 1}</span>
-            <a class="set-title" href="#/perform/${encodeURIComponent(id)}/${i}">${esc(s.title)}</a>
+            <a class="set-title" href="#/perform/${encodeURIComponent(id)}/${Math.max(0, tonight.indexOf(s.id))}">${played.has(s.id) ? `<span class="played-mark" title="Ma este már lejátszva" aria-label="lejátszva">${icon('check')}</span>` : ''}${esc(s.title)}</a>
             ${locked ? '' : `<button type="button" class="icon-btn icon-btn-red icon-btn-sm" data-act="remove" aria-label="Eltávolítás a listáról">${icon('x')}</button>`}
           </li>`).join('')}</ol>`
     : emptyState('songs', 'teal', 'A lista még üres', 'Koppints a „Dalok hozzáadása” gombra, és jelölj ki egyszerre több dalt.')}`;
@@ -145,6 +153,18 @@ export function setlistView(ctx) {
       const res = await setlistDialog('Lista módosítása', { name: l.name, date: l.date });
       if (res) { await store.updateSetlist(id, res); render(); toast('Lista módosítva.', 'success'); }
     }
+    if (act === 'reset-order') {
+      if (!(await confirmBox('Mentett sorrend vissza', 'Visszaállítod a mentett sorrendet a ma esti fellépéshez? A vendégkérések kikerülnek a ma esti sorrendből.', { okLabel: 'Visszaállítás' }))) return;
+      await night.clearTonightOrder(id);
+      render();
+      toast('A mentett sorrend visszaállítva.', 'success');
+    }
+    if (act === 'new-night') {
+      if (!(await confirmBox('Új este', 'Törlöd a ma esti „lejátszva” jelöléseket és a ma esti sorrend-módosításokat? A mentett dalok és listák nem változnak.', { okLabel: 'Új este' }))) return;
+      await night.newNight();
+      render();
+      toast('Új este: a jelölések törölve.', 'success');
+    }
     if (act === 'dup') {
       const copy = await store.duplicateSetlist(id);
       toast('Lista duplikálva – a másolatot nyitottam meg.', 'success');
@@ -168,6 +188,7 @@ export function setlistView(ctx) {
     }
   });
 
+  night.ensureFresh().then(render);
   render();
   return { id: 'setlist', title: store.state.setlists.get(id).name, back: '#/setlists', nav: 'perform', el, restoreScroll: true, cleanup: () => stopSort() };
 }

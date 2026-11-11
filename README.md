@@ -34,6 +34,13 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
   következő dal címe, Bluetooth lapozópedál (nyilak, PageUp/PageDown), zárolás
 - Képernyő ébren tartása minden képernyőn (Screen Wake Lock), háttérbe kerüléskor automatikus újrakérés
 - Dalszöveg: 8 betűstílus, 14–70 px betűméret, sortávolság, vastagság, igazítás
+- Óra minden képernyőn (24 órás), fellépés módban nagy méretben; kikapcsolható
+- „Ezt már játszottuk” (`js/night.js`): fellépés módban 1 perc után magától „lejátszva”, kézzel is jelölhető/visszavonható;
+  a listákban és a keresésben halványabb, pipával; „Új este – jelölések törlése” gomb, reggel 6 után magától törlődik
+- Gyors vendégkérés fellépés módban (nagyító gomb): ékezet nélküli keresés, a dal a következő helyre kerül;
+  csak az aznap esti sorrend változik, a mentett lista nem; „Mentett sorrend vissza” gomb
+- Két hasáb fekvő tableten, ha a dal egy hasábban nem fér ki (versszak/refrén nem törik ketté); kikapcsolható
+- Visszamenőleges gyorsellenőrzés a futó alkalmazásban (csak tesztkörnyezetben): `(await import('/tests/smoke.js')).runSmoke()`
 - Húzásos vissza-navigáció (`js/swipeback.js`): vízszintes legyintés bármelyik irányba = Vissza; a Beállításokban kikapcsolható
 - Refrénkiemelés (`js/lyrics.js`): refrénjel a Refrén / Refren / Refr / Ref (szögletes zárójelben, ponttal vagy
   kettősponttal is) és az önálló R / R: / R. – külön sorban vagy a refrén első sorának elején. A refrén minden sora

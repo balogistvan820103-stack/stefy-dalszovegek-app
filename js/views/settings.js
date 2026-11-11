@@ -32,7 +32,9 @@ export function settingsView(ctx) {
     </section>
 
     <section class="card set-sec">
-      <h2 class="sec-head">${tile('back', 'blue')} Navigáció</h2>
+      <h2 class="sec-head">${tile('back', 'blue')} Navigáció és kijelzés</h2>
+      <label class="switch-row"><input type="checkbox" data-k="twoColumns" ${app.twoColumns !== false ? 'checked' : ''}><span class="switch"></span><span>${icon('list')} Két hasáb fekvő tableten, ha a dal egy hasábban nem fér ki</span></label>
+      <label class="switch-row"><input type="checkbox" data-k="showClock" ${app.showClock !== false ? 'checked' : ''}><span class="switch"></span><span>${icon('clock')} Pontos idő mutatása minden képernyőn (fellépés módban nagy méretben)</span></label>
       <label class="switch-row"><input type="checkbox" data-k="swipeBack" ${app.swipeBack !== false ? 'checked' : ''}><span class="switch"></span><span>Húzásos vissza-navigáció – vízszintes legyintés (balról jobbra vagy jobbról balra) = Vissza</span></label>
       <p class="muted small">${icon('info')} Húzás közben megjelenik egy nyíl; ha elég hosszú a mozdulat, a nyíl kiemelődik, és felengedéskor visszalép. Szövegmezőkben, a címkesoron, húzásos átrendezéskor és fellépés módban (ahol a legyintés lapoz) nem működik.</p>
     </section>

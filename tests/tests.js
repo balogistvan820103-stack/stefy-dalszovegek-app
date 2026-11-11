@@ -389,6 +389,85 @@ await test('Szerkesztő „Refrén” gombja: [Refrén] a kijelölés elé, üre
   eq(mk('A\n\nB', 2, 2).changed, false, 'üres soron nem csinál semmit');
 });
 
+await test('„Ezt már játszottuk”: este reggel 6-ig tart, jelölés/visszavonás, új este, másnap magától törlődik', async () => {
+  const night = await import('../js/night.js');
+  eq(night.nightKey(new Date(2026, 10, 11, 21, 45)), '2026-11-11', 'este 21:45 → aznapi este');
+  eq(night.nightKey(new Date(2026, 10, 12, 1, 30)), '2026-11-11', 'éjjel 1:30 → még az előző este');
+  eq(night.nightKey(new Date(2026, 10, 12, 6, 5)), '2026-11-12', 'reggel 6:05 → új nap');
+  const songsBefore = JSON.stringify(store.exportData().songs);
+  await night.newNight();
+  await night.setPlayed(a.id, true);
+  assert(night.isPlayed(a.id), 'jelölve');
+  await night.setPlayed(a.id, false);
+  assert(!night.isPlayed(a.id), 'visszavonva');
+  await night.setPlayed(a.id, true);
+  await night.setPlayed(c.id, true);
+  eq(night.playedCount(), 2, 'két dal lejátszva');
+  await night.newNight();
+  eq(night.playedCount(), 0, '„Új este” mindent töröl');
+  // régi este szimulálása: a tárolt dátum tegnapi
+  await night.setPlayed(a.id, true);
+  await store.saveSettings('night', { ...store.settings('night'), date: '2000-01-01' });
+  assert(!night.isPlayed(a.id), 'régi este jelölése már nem számít');
+  await night.ensureFresh();
+  eq(store.settings('night').played, [], 'és a következő megnyitáskor törlődik');
+  eq(JSON.stringify(store.exportData().songs), songsBefore, 'a dalok nem változtak');
+});
+
+await test('Két hasáb: versszakok egyben maradnak; csak fekvő tableten és csak ha nem fér ki', async () => {
+  const { lyricsHTML, fitColumns } = await import('../js/components.js');
+  const song = 'V1a\nV1b\n\nR: Ref a\nref b\n\nV2a\nV2b\nV2c';
+  for (const hl of [true, false]) {
+    const box = document.createElement('div'); box.innerHTML = lyricsHTML(song, hl);
+    eq([...box.children].map((c) => (c.classList.contains('lyr-st') ? `[${c.querySelectorAll('.lyr-l').length}]` : 'gap')), ['[2]', 'gap', '[2]', 'gap', '[3]'], `versszak-blokkok (kiemelés: ${hl})`);
+  }
+  // méretfüggés: tesztelés valódi elemen, változtatható ablakmérettel
+  const lyr = document.createElement('div'); lyr.className = 'lyrics';
+  lyr.innerHTML = lyricsHTML(Array.from({ length: 40 }, (_, i) => `sor ${i}`).join('\n'));
+  lyr.style.cssText = 'font-size:30px;line-height:1.5;position:absolute;left:-9999px;width:900px';
+  document.body.appendChild(lyr);
+  const realW = Object.getOwnPropertyDescriptor(window, 'innerWidth'); const realH = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+  const size = (w, h) => { Object.defineProperty(window, 'innerWidth', { configurable: true, value: w }); Object.defineProperty(window, 'innerHeight', { configurable: true, value: h }); };
+  try {
+    size(1280, 800); eq(fitColumns(lyr, 600), true, 'fekvő tablet, nem fér ki → két hasáb');
+    eq(fitColumns(lyr, 99999), false, 'fekvő tablet, kifér → egy hasáb');
+    size(800, 1280); eq(fitColumns(lyr, 600), false, 'álló tablet → egy hasáb');
+    size(412, 915); eq(fitColumns(lyr, 600), false, 'álló telefon → egy hasáb');
+    size(915, 412); eq(fitColumns(lyr, 300), false, 'fekvő telefon → egy hasáb');
+    size(1280, 800); await store.patchSettings('app', { twoColumns: false });
+    eq(fitColumns(lyr, 600), false, 'kikapcsolva → egy hasáb');
+    await store.patchSettings('app', { twoColumns: true });
+  } finally {
+    if (realW) Object.defineProperty(window, 'innerWidth', realW); else delete window.innerWidth;
+    if (realH) Object.defineProperty(window, 'innerHeight', realH); else delete window.innerHeight;
+    lyr.remove();
+  }
+});
+
+await test('Vendégkérés: a dal a következő helyre kerül, duplikáció nélkül; a mentett lista nem változik', async () => {
+  const night = await import('../js/night.js');
+  const N = night.insertNext;
+  eq(N(['a', 'b', 'c', 'd'], 1, 'x'), { ids: ['a', 'b', 'x', 'c', 'd'], idx: 1, moved: false, isCurrent: false }, 'új dal a jelenlegi után');
+  eq(N(['a', 'b', 'c', 'd'], 1, 'd').ids, ['a', 'b', 'd', 'c'], 'listán későbbi dal előrehozva, nem kétszer');
+  eq(N(['a', 'b', 'c', 'd'], 2, 'a'), { ids: ['b', 'c', 'a', 'd'], idx: 1, moved: true, isCurrent: false }, 'már elhangzott dal újra: a jelenlegi dal ugyanaz marad');
+  eq(N(['a', 'b'], 0, 'a').isCurrent, true, 'a most szóló dalt nem helyezi át');
+  eq(N(['a', 'b'], 1, 'x').ids, ['a', 'b', 'x'], 'utolsó dal után a végére');
+  await night.newNight();
+  const l = store.state.setlists.get(list.id);
+  const saved = [...l.songIds];
+  const extra = (await store.saveSong({ title: 'Vendég kérte', lyrics: 'kérés' })).id;
+  const r = N(night.tonightIds(l), 0, extra);
+  await night.setTonightOrder(l, r.ids, extra);
+  eq(night.tonightIds(l), [saved[0], extra, ...saved.slice(1)], 'ma esti sorrend');
+  eq(store.state.setlists.get(list.id).songIds, saved, 'a mentett lista változatlan');
+  assert(night.requestedSet(list.id).has(extra), 'kérésként jelölve');
+  await store.reload();
+  eq(night.tonightIds(store.state.setlists.get(list.id)), [saved[0], extra, ...saved.slice(1)], 'újraindítás után is megmarad aznap este');
+  await night.clearTonightOrder(list.id);
+  eq(night.tonightIds(store.state.setlists.get(list.id)), saved, 'visszaállítható a mentett sorrend');
+  await store.deleteSong(extra);
+});
+
 await test('Tömeges műveletek: kedvenc, címke, törlés egy lépésben', async () => {
   const ids = store.querySongs({ query: 'zold ablakos' }).concat(store.querySongs({ query: 'regi kodolas' })).map((x) => x.song.id);
   eq(ids.length, 2, 'két kijelölt dal');

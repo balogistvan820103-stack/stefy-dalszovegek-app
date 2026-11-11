@@ -533,7 +533,10 @@ input[type=checkbox], input[type=radio] { accent-color: var(--gold); }
 @media (max-width: 520px) {
   .pf-nav span { display: none; }
   .pf-bottom { grid-template-columns: 1fr 1fr 1fr 1fr; }
-  .pf-tools .pf-btn:nth-child(4) { display: none; }
+  .pf-tools [data-act=fullscreen] { display: none; }
+  .pf-top { flex-wrap: wrap; row-gap: 6px; }
+  .pf-tools { order: 3; flex: 1 1 100%; justify-content: flex-end; }
+  .pf-btn { width: 44px; height: 44px; }
 }
 @media (max-height: 500px) and (orientation: landscape) {
   .pf-top { padding-top: calc(var(--safe-t) + 4px); padding-bottom: 4px; }
@@ -726,3 +729,48 @@ a.new-card:hover { background: var(--surface-2); }
 .swipe-back.right { right: 0; transform: translateX(calc(70px - var(--p) * 92px)); }
 .swipe-back.ready { background: var(--grad-gold); border-color: #fff; }
 .swipe-back.ready svg { stroke: #2a1600; }
+
+/* ---------- Óra ---------- */
+.clock { flex: none; font-weight: 800; font-size: 1.05rem; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--gold-2); padding: 0 4px; white-space: nowrap; }
+.pf-clock { flex: none; font-weight: 900; font-size: clamp(1.7rem, 4.2vw, 2.6rem); line-height: 1; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8); padding: 4px 10px; border-radius: 12px; background: rgba(0, 0, 0, 0.35); white-space: nowrap; }
+body.no-clock .clock, body.no-clock .pf-clock { display: none; }
+@media (max-width: 420px) { .clock { font-size: 0.95rem; padding: 0 2px; } }
+@media (max-width: 520px) { .pf-clock { font-size: 1.5rem; padding: 4px 6px; } }
+@media (max-height: 500px) and (orientation: landscape) { .pf-clock { font-size: 1.7rem; } }
+
+/* ---------- „Ezt már játszottuk” ---------- */
+.played-mark { display: inline-grid; place-items: center; width: 1.25em; height: 1.25em; margin-right: 0.35em; border-radius: 50%; background: #22c55e; color: #04210f; vertical-align: -0.15em; flex: none; }
+.played-mark .i { width: 0.85em; height: 0.85em; stroke-width: 3.2; }
+.song-card.is-played, .set-row.is-played { opacity: 0.5; }
+.song-card.is-played .song-title, .set-row.is-played .set-title { font-weight: 600; }
+.pf-drawer-list button.is-played { opacity: 0.55; }
+.pf-drawer-list .pf-dl-title { flex: 1; min-width: 0; }
+.pf-drawer-list .played-mark { margin: 0 0 0 auto; }
+.pf-drawer-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; padding-top: 10px; }
+.pf-played { color: #4ade80; font-weight: 800; display: inline-flex; align-items: center; gap: 3px; }
+.pf-played .i { width: 1em; height: 1em; stroke-width: 3; }
+.pf-played-btn.on { background: linear-gradient(135deg, #4ade80, #16a34a); border-color: transparent; color: #04210f; }
+.played-note { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: rgba(34, 197, 94, 0.14); border-left: 4px solid #22c55e; color: #86efac; font-weight: 600; }
+
+/* ---------- Vendégkérés (fellépés mód) ---------- */
+.pf-req-btn { background: linear-gradient(135deg, #38bdf8, #7c3aed); border-color: transparent; }
+.pf-req { position: absolute; inset: 0; z-index: 6; background: rgba(0, 0, 0, 0.65); display: flex; justify-content: center; align-items: flex-start; padding: calc(var(--safe-t) + 12px) 10px 10px; }
+.pf-req-box { width: min(100%, 720px); max-height: 100%; display: flex; flex-direction: column; gap: 10px; background: linear-gradient(180deg, #241d5c, #120e33); border-radius: 22px; padding: 14px; border-top: 3px solid #38bdf8; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.pf-req-box .pf-drawer-head b { display: flex; align-items: center; gap: 8px; }
+.pf-req-hint { margin: 0; }
+.pf-req-list { list-style: none; margin: 0; padding: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.pf-req-list button { width: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 56px; padding: 8px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); text-align: left; font-weight: 700; font-size: 1.05rem; color: var(--text); }
+.pf-req-list button:active { background: rgba(56, 189, 248, 0.25); }
+.pf-req-list button.is-played { opacity: 0.6; }
+.req-tag { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 800; background: rgba(56, 189, 248, 0.2); color: #7dd3fc; white-space: nowrap; }
+.req-tag.now { background: var(--grad-gold); color: #2a1600; }
+.req-tag.played { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+.req-tag .i { width: 0.9em; height: 0.9em; stroke-width: 3; }
+.tonight-note { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: rgba(56, 189, 248, 0.12); border-left: 4px solid #38bdf8; color: #bae6fd; font-weight: 600; }
+.tonight-note span { flex: 1; min-width: 200px; }
+.pf-req-input { padding-left: 16px; }
+
+/* ---------- Kéthasábos dalszöveg (fekvő tablet) ---------- */
+.lyr-st, .lyr-ref { break-inside: avoid; page-break-inside: avoid; }
+.lyrics.two-col { column-count: 2; column-gap: 2.4em; column-rule: 1px solid rgba(255, 255, 255, 0.18); column-fill: balance; }
+.lyrics.two-col .lyr-st { display: block; }

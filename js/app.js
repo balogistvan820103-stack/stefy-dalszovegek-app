@@ -13,8 +13,9 @@ import { settingsView } from './views/settings.js';
 import { newSongView, scanView } from './views/scan.js';
 import * as ocr from './ocr.js';
 import { initSwipeBack } from './swipeback.js';
+import * as night from './night.js';
 
-export const APP_VERSION = '1.4.1';
+export const APP_VERSION = '1.5.0';
 
 const routes = [
   { re: /^\/(?:home)?$/, view: homeView },
@@ -211,6 +212,28 @@ async function requestPersistence() {
   } catch { /* nem támogatott */ }
 }
 
+/* ---------------- Óra (minden képernyőn, 24 órás) ---------------- */
+
+export function clockText(d = new Date()) {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function startClock() {
+  const paintVisibility = () => document.body.classList.toggle('no-clock', store.settings('app').showClock === false);
+  const tick = () => {
+    const t = clockText();
+    for (const el of document.querySelectorAll('[data-clock]')) if (el.textContent !== t) el.textContent = t;
+  };
+  paintVisibility();
+  tick();
+  // másodpercenként ellenőrizzük – így a percváltás azonnal látszik, és alvás után is pontos
+  setInterval(tick, 1000);
+  document.addEventListener('visibilitychange', tick);
+  store.onChange((what) => { if (what === 'settings:app' || what === 'all') { paintVisibility(); tick(); } });
+  // új képernyő megjelenésekor (pl. fellépés mód) azonnal kiírjuk az időt
+  new MutationObserver(tick).observe(document.getElementById('view'), { childList: true });
+}
+
 /** A Vissza gomb és a húzásos visszalépés közös művelete. */
 function backFrom(view) {
   if (view.onBack) view.onBack(); else goBack(view.back);
@@ -225,6 +248,7 @@ async function start() {
     return;
   }
   wake.setEnabled(store.settings('app').wakeLock);
+  night.ensureFresh(); // előző esti jelölések törlése, ha már új nap van
   // húzásos vissza-navigáció: ugyanazt teszi, mint a nagy Vissza gomb
   initSwipeBack({
     enabled: () => store.settings('app').swipeBack !== false,
@@ -237,6 +261,7 @@ async function start() {
   const ind = $('#saveInd');
   store.onChange(() => { ind.classList.remove('flash'); void ind.offsetWidth; ind.classList.add('flash'); });
   applyListTitleSize();
+  startClock();
   await route(true);
   requestPersistence();
   // a szövegfelismerő fájljainak csendes letöltése az offline tárolóba (egyszer, ha van internet)
