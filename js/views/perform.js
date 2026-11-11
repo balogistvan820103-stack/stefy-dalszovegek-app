@@ -2,9 +2,9 @@
 // billentyűzettel és Bluetooth lapozópedállal (nyilak / PageUp / PageDown).
 
 import * as store from '../store.js';
-import { esc, toast, clamp, debounce, confirmBox } from '../util.js';
+import { esc, toast, clamp, debounce, confirmBox, isModalOpen } from '../util.js';
 import { icon } from '../icons.js';
-import { applyReaderStyle, lyricsHTML, mediaURL, FONT_MIN, FONT_MAX, emptyState, fitColumns } from '../components.js';
+import { applyReaderStyle, lyricsHTML, mediaURL, FONT_MIN, FONT_MAX, emptyState, fitColumns, quickEditSong } from '../components.js';
 import * as night from '../night.js';
 
 export async function performView(ctx) {
@@ -39,6 +39,7 @@ export async function performView(ctx) {
         <button type="button" class="pf-btn pf-req-btn" data-act="request" aria-label="Vendégkérés: dal keresése">${icon('search')}</button>
         <button type="button" class="pf-btn" data-act="smaller" aria-label="Kisebb betű">A<sup>−</sup></button>
         <button type="button" class="pf-btn" data-act="bigger" aria-label="Nagyobb betű">A<sup>+</sup></button>
+        <button type="button" class="pf-btn pf-edit-btn" data-act="edit-song" aria-label="Dalszöveg szerkesztése">${icon('edit')}</button>
         <button type="button" class="pf-btn pf-played-btn" data-act="played" aria-label="Lejátszottnak jelölés" aria-pressed="false">${icon('check')}</button>
         <button type="button" class="pf-btn pf-lock" data-act="lock" aria-label="Zárolás"></button>
         <button type="button" class="pf-btn" data-act="fullscreen" aria-label="Teljes képernyő">${icon('fullscreen')}</button>
@@ -230,6 +231,17 @@ export async function performView(ctx) {
       case 'bigger': resize(2); break;
       case 'exit': exit(); break;
       case 'request': openReq(); break;
+      case 'edit-song': {
+        const saved = await quickEditSong(songs[idx].id);
+        paintLock();
+        if (saved) {
+          const keep = onSong;
+          songs = loadSongs();
+          show(idx);
+          onSong = keep; // a szerkesztés nem indítja újra a „lejátszva” időmérést
+        }
+        break;
+      }
       case 'close-req': closeReq(); break;
       case 'reset-order': {
         if (!(await confirmBox('Mentett sorrend vissza', 'Visszaállítod a lista mentett sorrendjét? A ma esti vendégkérések kikerülnek a sorrendből (a dalok megmaradnak).', { okLabel: 'Visszaállítás' }))) return;
@@ -308,6 +320,7 @@ export async function performView(ctx) {
 
   const onKey = (e) => {
     if (e.target.closest?.('input, textarea, select')) return;
+    if (isModalOpen()) return; // nyitott ablak (pl. szerkesztő) alatt a pedál nem lapoz
     if (!req.hidden) { if (e.key === 'Escape') closeReq(); return; }
     if (!drawer.hidden && e.key === 'Escape') { drawer.hidden = true; return; }
     if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }

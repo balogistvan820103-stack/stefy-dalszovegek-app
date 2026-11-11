@@ -1,9 +1,9 @@
 // Közös felületi építőelemek: dalkártya, dalszöveg-megjelenítés, betűpanel, háttérképek.
 
 import * as store from './store.js';
-import { esc, debounce, clamp } from './util.js';
+import { esc, debounce, clamp, modal, toast, confirmBox } from './util.js';
 import { icon } from './icons.js';
-import { parseLyrics } from './lyrics.js';
+import { parseLyrics, markRefrain } from './lyrics.js';
 import { isPlayed } from './night.js';
 
 /* ---------------- Betűtípusok (csak a készüléken lévő rendszerbetűk – offline is működik) ---------------- */
@@ -301,6 +301,50 @@ export function fontPanel({ onChange, compact = false } = {}) {
   });
   el.flush = () => persist.flush();
   return el;
+}
+
+/**
+ * Gyors szerkesztő ablak (fellépés-listáról és fellépés módból is): cím + dalszöveg.
+ * Zárolt módban megkérdezi, feloldja-e a zárolást. Visszaad: a mentett dal, vagy null.
+ */
+export async function quickEditSong(songId) {
+  const song = store.getSong(songId);
+  if (!song) { toast('A dal nem található.', 'error'); return null; }
+  if (store.settings('app').performLock) {
+    const ok = await confirmBox('Zárolva', 'A fellépés-zárolás be van kapcsolva, ezért a szerkesztés tiltva van. Feloldod a zárolást, és szerkeszted a dalt?', { okLabel: 'Feloldás és szerkesztés' });
+    if (!ok) return null;
+    await store.patchSettings('app', { performLock: false });
+  }
+  const res = await modal({
+    title: 'Dal szerkesztése',
+    wide: true,
+    body: `<label class="field"><span class="field-label">Cím</span>
+        <input class="input input-lg" name="qe-title" maxlength="300" autocomplete="off" value="${esc(song.title)}">
+        <span class="field-error" hidden>Add meg a dal címét.</span></label>
+      <div class="field"><span class="field-label">Dalszöveg</span>
+        <div class="ref-btn-row"><button type="button" class="btn btn-gold btn-sm" data-qe-ref>${icon('star')} Refrén</button>
+          <small class="muted">Jelöld ki a refrén sorait, majd nyomd meg.</small></div>
+        <textarea class="input lyrics-input qe-lyrics" name="qe-lyrics" rows="14" spellcheck="false" aria-label="Dalszöveg">${esc(song.lyrics || '')}</textarea></div>`,
+    buttons: [{ label: 'Mégse', value: null, kind: 'ghost' }, { label: 'Mentés', value: true, kind: 'primary' }],
+    onOpen: (box) => {
+      const ta = box.querySelector('textarea');
+      box.querySelector('[data-qe-ref]').addEventListener('click', () => {
+        const r = markRefrain(ta.value, ta.selectionStart ?? 0, ta.selectionEnd ?? 0);
+        if (!r.changed) { toast(r.reason, 'info', 3000); ta.focus(); return; }
+        ta.value = r.text; ta.focus(); ta.setSelectionRange(r.selStart, r.selEnd);
+      });
+    },
+    getValue: (box) => {
+      const title = box.querySelector('[name=qe-title]').value.trim();
+      if (!title) { box.querySelector('.field-error').hidden = false; return undefined; }
+      return { title, lyrics: box.querySelector('textarea').value };
+    },
+  });
+  if (!res) return null;
+  if (res.title === song.title && store.cleanLyrics(res.lyrics) === song.lyrics) return song;
+  const saved = await store.saveSong({ ...song, title: res.title, lyrics: res.lyrics });
+  toast('A dal módosítása elmentve.', 'success');
+  return saved;
 }
 
 export function emptyState(iconName, color, title, text, actionHTML = '') {

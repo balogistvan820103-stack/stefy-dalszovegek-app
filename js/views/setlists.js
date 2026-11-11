@@ -3,7 +3,7 @@
 import * as store from '../store.js';
 import { esc, toast, confirmBox, modal, fmtISODate, todayISO, debounce } from '../util.js';
 import { icon, tile } from '../icons.js';
-import { emptyState } from '../components.js';
+import { emptyState, quickEditSong } from '../components.js';
 import { makeSortable } from '../dnd.js';
 import * as night from '../night.js';
 
@@ -120,6 +120,7 @@ export function setlistView(ctx) {
             ${locked ? '' : `<button type="button" class="grip" aria-label="Áthelyezés húzással">${icon('grip')}</button>`}
             <span class="set-num">${i + 1}</span>
             <a class="set-title" href="#/perform/${encodeURIComponent(id)}/${Math.max(0, tonight.indexOf(s.id))}">${played.has(s.id) ? `<span class="played-mark" title="Ma este már lejátszva" aria-label="lejátszva">${icon('check')}</span>` : ''}${esc(s.title)}</a>
+            <button type="button" class="icon-btn icon-btn-blue icon-btn-sm" data-act="edit-song" aria-label="Dalszöveg szerkesztése">${icon('edit')}</button>
             ${locked ? '' : `<button type="button" class="icon-btn icon-btn-red icon-btn-sm" data-act="remove" aria-label="Eltávolítás a listáról">${icon('x')}</button>`}
           </li>`).join('')}</ol>`
     : emptyState('songs', 'teal', 'A lista még üres', 'Koppints a „Dalok hozzáadása” gombra, és jelölj ki egyszerre több dalt.')}`;
@@ -152,6 +153,13 @@ export function setlistView(ctx) {
     if (act === 'edit') {
       const res = await setlistDialog('Lista módosítása', { name: l.name, date: l.date });
       if (res) { await store.updateSetlist(id, res); render(); toast('Lista módosítva.', 'success'); }
+    }
+    if (act === 'edit-song') {
+      const sid = b.closest('[data-id]').dataset.id;
+      const wasLocked = store.settings('app').performLock;
+      const saved = await quickEditSong(sid);
+      if (saved && wasLocked) ctx.rerender(); else if (saved) render();
+      return;
     }
     if (act === 'reset-order') {
       if (!(await confirmBox('Mentett sorrend vissza', 'Visszaállítod a mentett sorrendet a ma esti fellépéshez? A vendégkérések kikerülnek a ma esti sorrendből.', { okLabel: 'Visszaállítás' }))) return;

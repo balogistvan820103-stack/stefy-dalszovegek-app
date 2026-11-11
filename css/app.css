@@ -774,3 +774,4 @@ body.no-clock .clock, body.no-clock .pf-clock { display: none; }
 .lyr-st, .lyr-ref { break-inside: avoid; page-break-inside: avoid; }
 .lyrics.two-col { column-count: 2; column-gap: 2.4em; column-rule: 1px solid rgba(255, 255, 255, 0.18); column-fill: balance; }
 .lyrics.two-col .lyr-st { display: block; }
+.pf-edit-btn { background: linear-gradient(135deg, #60a5fa, #2563eb); border-color: transparent; }
