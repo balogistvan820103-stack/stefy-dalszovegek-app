@@ -30,6 +30,7 @@ export const DEFAULTS = Object.freeze({
     performLock: false,
     showArtist: false,
     showNext: true,
+    swipeBack: true,
     listTitleSize: 19,
     songsTab: 'all',
     tagFilter: null,

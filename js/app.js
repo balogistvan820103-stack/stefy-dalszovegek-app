@@ -12,8 +12,9 @@ import { performView } from './views/perform.js';
 import { settingsView } from './views/settings.js';
 import { newSongView, scanView } from './views/scan.js';
 import * as ocr from './ocr.js';
+import { initSwipeBack } from './swipeback.js';
 
-export const APP_VERSION = '1.4.0';
+export const APP_VERSION = '1.4.1';
 
 const routes = [
   { re: /^\/(?:home)?$/, view: homeView },
@@ -140,7 +141,7 @@ function renderShell(view) {
   const back = $('#backBtn');
   back.hidden = !view.back;
   back.innerHTML = `${icon('back')}`;
-  back.onclick = () => (view.onBack ? view.onBack() : goBack(view.back));
+  back.onclick = () => backFrom(view);
   const actions = $('#viewActions');
   actions.replaceChildren();
   if (view.actions) {
@@ -210,6 +211,11 @@ async function requestPersistence() {
   } catch { /* nem támogatott */ }
 }
 
+/** A Vissza gomb és a húzásos visszalépés közös művelete. */
+function backFrom(view) {
+  if (view.onBack) view.onBack(); else goBack(view.back);
+}
+
 async function start() {
   renderNav();
   try {
@@ -219,6 +225,12 @@ async function start() {
     return;
   }
   wake.setEnabled(store.settings('app').wakeLock);
+  // húzásos vissza-navigáció: ugyanazt teszi, mint a nagy Vissza gomb
+  initSwipeBack({
+    enabled: () => store.settings('app').swipeBack !== false,
+    canGoBack: () => !!(current && current.back && !current.fullscreen),
+    back: () => { if (current) backFrom(current); },
+  });
   window.addEventListener('hashchange', () => route());
   store.onChange((what) => { if (what === 'settings:app' || what === 'all') renderLockBadge(); });
   // „Helyben mentve” jelzés felvillan minden sikeres mentés után

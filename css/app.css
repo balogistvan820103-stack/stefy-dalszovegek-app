@@ -708,3 +708,21 @@ a.new-card:hover { background: var(--surface-2); }
 .lyr-ref-mark { display: inline-block; padding: 0 0.3em; margin-right: 0.15em; border-radius: 0.25em; font-size: 0.7em; font-weight: 800; color: var(--ref-ink, #1a1200); background: var(--ref); text-shadow: none; vertical-align: 0.12em; }
 .fp-row.is-off { opacity: 0.45; }
 .ref-btn-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+
+/* ---------- Húzásos vissza-navigáció jelzője ---------- */
+.swipe-back {
+  --p: 0;
+  position: fixed; top: 50%; z-index: 250;
+  width: 64px; height: 64px; margin-top: -32px;
+  display: grid; place-items: center; border-radius: 50%;
+  background: rgba(20, 15, 55, 0.9); border: 2px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  opacity: 0; pointer-events: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.swipe-back svg { width: 34px; height: 34px; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.swipe-back.show { opacity: calc(0.35 + var(--p) * 0.65); }
+.swipe-back.left { left: 0; transform: translateX(calc(-70px + var(--p) * 92px)); }
+.swipe-back.right { right: 0; transform: translateX(calc(70px - var(--p) * 92px)); }
+.swipe-back.ready { background: var(--grad-gold); border-color: #fff; }
+.swipe-back.ready svg { stroke: #2a1600; }

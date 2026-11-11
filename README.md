@@ -34,6 +34,7 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
   következő dal címe, Bluetooth lapozópedál (nyilak, PageUp/PageDown), zárolás
 - Képernyő ébren tartása minden képernyőn (Screen Wake Lock), háttérbe kerüléskor automatikus újrakérés
 - Dalszöveg: 8 betűstílus, 14–70 px betűméret, sortávolság, vastagság, igazítás
+- Húzásos vissza-navigáció (`js/swipeback.js`): vízszintes legyintés bármelyik irányba = Vissza; a Beállításokban kikapcsolható
 - Refrénkiemelés (`js/lyrics.js`): refrénjel a Refrén / Refren / Refr / Ref (szögletes zárójelben, ponttal vagy
   kettősponttal is) és az önálló R / R: / R. – külön sorban vagy a refrén első sorának elején. A refrén minden sora
   színes csíkot és halvány hátteret kap az üres sorig vagy a következő jelig; szöveg nélküli jelnél „Refrén” címke.
