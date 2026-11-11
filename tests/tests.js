@@ -290,6 +290,105 @@ await test('Word-dokumentumok (DOCX, régi DOC, ODT, RTF) beolvasása – valód
   eq(res.summary.newSongs, 1, 'a négy azonos tartalmú dokumentumból egy dal lesz');
 });
 
+await test('Fotózás: felismert szöveg tisztítása, cím az első sorból, versszakhatárok a sorközökből', async () => {
+  const ocr = await import('../js/ocr.js');
+  eq(ocr.cleanOcrText(`  Elsõ  sor 
+
+
+
+második   sor  
+`), `Első sor
+
+második sor`, 'szóközök, sorvégek, õ → ő');
+  const sp = ocr.splitTitle(`
+12. Esik az eső, még sincs sár.
+Csak a babám udvarán
+Elhordanám`);
+  eq(sp.title, 'Esik az eső, még sincs sár', 'cím: sorszám és záró pont nélkül');
+  eq(sp.rest, `Csak a babám udvarán
+Elhordanám`, 'a szöveg a cím nélkül');
+  const L = (text, y) => ({ text, bbox: { y0: y, y1: y + 30 } });
+  // ritka sorköz (minden sor 75 px), egyetlen nagyobb köz a versszakok között
+  const t = ocr.textFromLines([L('a', 0), L('b', 75), L('c', 150), L('d', 300), L('e', 375)]);
+  eq(t, `a
+b
+c
+
+d
+e`, 'üres sor csak a valódi versszakhatárnál');
+  eq(ocr.textFromLines([L('egy', 0)]), '', 'egy sornál a nyers szöveget használjuk');
+});
+
+await test('Refrénjel felismerése: R, R:, R., Ref., Refr, Refrén, Refren, [Refrén] – és a Rózsa NEM jel', async () => {
+  const { refrainMarker: m } = await import('../js/lyrics.js');
+  const yes = {
+    // jel egyedül a sorban
+    'R': ['Refrén', ''], 'r': ['Refrén', ''], 'R:': ['Refrén', ''], 'R.': ['Refrén', ''], ' R. ': ['Refrén', ''],
+    'Ref': ['Refrén', ''], 'Ref.': ['Refrén', ''], 'REF:': ['Refrén', ''], 'Refr.': ['Refrén', ''], 'refr:': ['Refrén', ''],
+    'Refrén': ['Refrén', ''], 'refrén:': ['Refrén', ''], 'REFRÉN.': ['Refrén', ''], 'Refren': ['Refrén', ''], 'refren:': ['Refrén', ''],
+    '[Refrén]': ['Refrén', ''], '[refren]': ['Refrén', ''], '[Ref.]': ['Refrén', ''], '[R]': ['Refrén', ''], '[REFR]': ['Refrén', ''],
+    'Refrén 2': ['Refrén 2', ''], '[Refrén 2x]': ['Refrén 2×', ''], 'Refrén: 2x': ['Refrén 2×', ''], 'R 2x': ['Refrén 2×', ''], 'R2:': ['Refrén 2', ''],
+    // jel a refrén első sorának elején
+    'R: Szól a nóta': ['Refrén', 'Szól a nóta'], 'R. Szól a nóta': ['Refrén', 'Szól a nóta'], 'r:Rózsa, rózsa': ['Refrén', 'Rózsa, rózsa'],
+    'Ref. Mindig veled': ['Refrén', 'Mindig veled'], 'Refrén: Az a szép': ['Refrén', 'Az a szép'], '[Refrén] Ölembe ült': ['Refrén', 'Ölembe ült'],
+    'Refr.: Ha átölel': ['Refrén', 'Ha átölel'],
+  };
+  for (const [line, [label, rest]] of Object.entries(yes)) {
+    const r = m(line);
+    assert(r, `jelnek kell lennie: „${line}”`);
+    eq([r.label, r.rest], [label, rest], `„${line}”`);
+  }
+  const no = ['Rózsa, rózsa, piros rózsa', 'Rózsa', 'Reggel', 'R betűvel kezdődik', 'Refréneztünk egész este', 'Referencia', 'Ref ma este',
+    'Rám néztél egy mosollyal', 'R Szól a nóta', 'Refrénnel együtt', '[1. versszak]', '[Versszak]', '', '   ', 'A fülembe muzsikál'];
+  for (const line of no) eq(m(line), null, `nem lehet jel: „${line}”`);
+});
+
+await test('Refrén kiterjedése: a jeltől az üres sorig vagy a következő jelig; jel után szöveg nélkül címke', async () => {
+  const { parseLyrics } = await import('../js/lyrics.js');
+  const kinds = (t) => parseLyrics(t).map((p) => `${p.kind}:${p.text}`);
+  eq(kinds('Első sor\nR:\nSzól a nóta\nhajnalig szól\n\nVers2\nRózsa nyílik'),
+    ['line:Első sor', 'ref-label:Refrén', 'ref-line:Szól a nóta', 'ref-line:hajnalig szól', 'gap:', 'line:Vers2', 'line:Rózsa nyílik'], 'külön sorban álló R:');
+  eq(kinds('R: Szól a nóta\nhajnalig\nRef. Másik refrén\nsor\n\nVége'),
+    ['ref-line:Szól a nóta', 'ref-line:hajnalig', 'ref-line:Másik refrén', 'ref-line:sor', 'gap:', 'line:Vége'], 'jel a sor elején, új jelnél új refrén');
+  eq(parseLyrics('R: Szól a nóta')[0].mark, 'R:', 'a sor eleji jel megmarad kis címkeként');
+  eq(kinds('Vers\n\nRefrén\n\nVers2'), ['line:Vers', 'gap:', 'ref-label:Refrén', 'gap:', 'line:Vers2'], 'jel után nincs szöveg → címke');
+  eq(kinds('[Refrén]\nA\n[2. versszak]\nB'), ['ref-label:Refrén', 'ref-line:A', 'section:2. versszak', 'line:B'], 'más szakaszcímke lezárja a refrént');
+  eq(kinds('Rózsa\nRózsa'), ['line:Rózsa', 'line:Rózsa'], 'Rózsa nem indít refrént');
+});
+
+await test('Refrén megjelenítése: kiemelés be/ki, szöveg nem vész el, HTML-biztonság', async () => {
+  const { lyricsHTML } = await import('../js/components.js');
+  const song = 'Vers <b>egy</b>\nR:\nRef & sor\nmásik\n\nRózsa nyílik\nRefrén\n';
+  const on = lyricsHTML(song, true);
+  const box = document.createElement('div'); box.innerHTML = on;
+  eq(box.querySelectorAll('.lyr-ref').length, 2, 'két refrénblokk');
+  eq([...box.querySelectorAll('.lyr-ref .lyr-ref-label')].map((x) => x.textContent), ['Refrén', 'Refrén'], 'címkék');
+  eq([...box.querySelectorAll('.lyr-ref:first-child ~ * , .lyr-ref')][0].textContent.includes('Ref & sor'), true, 'a refrén sora a blokkban');
+  assert(!box.querySelector('b'), 'a beírt HTML nem értelmeződik');
+  assert(box.textContent.includes('Vers <b>egy</b>'), 'a beírt szöveg pontosan látszik');
+  assert(!box.querySelector('.lyr-ref')?.textContent.includes('Rózsa'), 'a Rózsa sor nincs a refrénben');
+  const off = document.createElement('div'); off.innerHTML = lyricsHTML(song, false);
+  eq(off.querySelectorAll('.lyr-ref, .lyr-ref-label, .lyr-sec').length, 0, 'kikapcsolva nincs kiemelés');
+  eq([...off.querySelectorAll('.lyr-l')].map((d) => d.textContent), song.split('\n'), 'kikapcsolva minden sor változatlan');
+  const rm = document.createElement('div'); rm.innerHTML = lyricsHTML('R: Szól a nóta', true);
+  eq(rm.querySelector('.lyr-ref-mark')?.textContent, 'R:', 'sor eleji jel kis címkeként');
+});
+
+await test('Szerkesztő „Refrén” gombja: [Refrén] a kijelölés elé, üres sor utána, ha kell', async () => {
+  const { markRefrain: mk } = await import('../js/lyrics.js');
+  const t = 'Vers1\nVers2\nSzól a nóta\nhajnalig szól\nVers3';
+  const a = t.indexOf('Szól a nóta'); const b = t.indexOf('hajnalig szól') + 4;
+  let r = mk(t, a, b);
+  eq(r.text, 'Vers1\nVers2\n[Refrén]\nSzól a nóta\nhajnalig szól\n\nVers3', 'kijelölt sorok elé jel, utánuk üres sor');
+  eq(r.text.slice(r.selStart, r.selEnd), '[Refrén]\nSzól a nóta\nhajnalig szól', 'a kijelölés a megjelölt refrénre kerül');
+  r = mk('Vers\n\nSzól a nóta\nhajnalig szól\n\nVers', 9, 9);
+  eq(r.text, 'Vers\n\n[Refrén]\nSzól a nóta\nhajnalig szól\n\nVers', 'kurzorral a versszakban: az egész versszak, fölös üres sor nélkül');
+  r = mk('A\nB', 0, 3);
+  eq(r.text, '[Refrén]\nA\nB', 'a dal végén nem kell üres sor');
+  eq(mk('[Refrén]\nA', 10, 10).changed, false, 'a már megjelölt refrént nem jelöli újra');
+  eq(mk('A\n\nB', 2, 2).changed, false, 'üres soron nem csinál semmit');
+});
+
 await test('Tömeges műveletek: kedvenc, címke, törlés egy lépésben', async () => {
   const ids = store.querySongs({ query: 'zold ablakos' }).concat(store.querySongs({ query: 'regi kodolas' })).map((x) => x.song.id);
   eq(ids.length, 2, 'két kijelölt dal');

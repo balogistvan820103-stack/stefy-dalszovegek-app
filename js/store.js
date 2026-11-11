@@ -17,6 +17,7 @@ export const DEFAULTS = Object.freeze({
     align: 'left',
     overlay: 0.6,
     highlightSections: true,
+    refColor: '#fbbf24',
   },
   home: {
     title: { text: 'STEFY-BAND', size: 60, color: '#ffd166', align: 'center', x: 50, y: 33 },

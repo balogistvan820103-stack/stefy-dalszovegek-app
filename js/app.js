@@ -10,8 +10,10 @@ import { readerView, editorView } from './views/reader.js';
 import { setlistsView, setlistView, pickerView } from './views/setlists.js';
 import { performView } from './views/perform.js';
 import { settingsView } from './views/settings.js';
+import { newSongView, scanView } from './views/scan.js';
+import * as ocr from './ocr.js';
 
-export const APP_VERSION = '1.2.1';
+export const APP_VERSION = '1.4.0';
 
 const routes = [
   { re: /^\/(?:home)?$/, view: homeView },
@@ -24,6 +26,8 @@ const routes = [
   { re: /^\/setlist\/([^/]+)\/add$/, view: pickerView },
   { re: /^\/perform\/([^/]+)\/(\d+)$/, view: performView },
   { re: /^\/settings$/, view: settingsView },
+  { re: /^\/new$/, view: newSongView },
+  { re: /^\/scan$/, view: scanView },
 ];
 
 const NAV = [
@@ -223,6 +227,12 @@ async function start() {
   applyListTitleSize();
   await route(true);
   requestPersistence();
+  // a szövegfelismerő fájljainak csendes letöltése az offline tárolóba (egyszer, ha van internet)
+  setTimeout(async () => {
+    try {
+      if (navigator.onLine !== false && navigator.serviceWorker?.controller && !(await ocr.offlineReady())) await ocr.prefetch();
+    } catch { /* majd legközelebb */ }
+  }, 6000);
 }
 
 window.addEventListener('unhandledrejection', (e) => {

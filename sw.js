@@ -4,7 +4,10 @@
 // Egyedi előtag: ugyanazon a github.io címen futhat a régi STEFY-BAND alkalmazás is
 // (az ő gyorsítótára „stefy-dalszovegek-v…” nevű) – azt soha nem töröljük.
 const PREFIX = 'stefy-dalszovegek-app-';
-const CACHE = `${PREFIX}v1.2.1`;
+const CACHE = `${PREFIX}v1.4.0`;
+// A szövegfelismerő (kb. 17 MB) külön tárolóban van, hogy alkalmazásfrissítéskor ne kelljen újra letölteni.
+// Csak akkor kell átnevezni, ha a vendor/tesseract mappa tartalma változik.
+const OCR_CACHE = `${PREFIX}ocr-tesseract-5.1.1-hun-best`;
 const ASSETS = [
   './',
   './index.html',
@@ -21,6 +24,9 @@ const ASSETS = [
   './js/components.js',
   './js/txtimport.js',
   './js/docread.js',
+  './js/ocr.js',
+  './js/lyrics.js',
+  './js/views/scan.js',
   './js/views/home.js',
   './js/views/songs.js',
   './js/views/reader.js',
@@ -42,7 +48,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE && k !== OCR_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -65,6 +71,20 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return; // külső kérésekhez nem nyúlunk
   if (url.pathname.includes('/tests/')) return; // a tesztek sosem a gyorsítótárból futnak
   heal();
+
+  // Szövegfelismerő fájlok: nagyok és nem változnak – tárolóból, ha megvan; különben letöltés és eltárolás
+  if (url.pathname.includes('/vendor/tesseract/')) {
+    event.respondWith(
+      caches.match(req, { ignoreSearch: true }).then((cached) => cached || fetch(req).then((res) => {
+        if (res.ok && res.type === 'basic') {
+          const copy = res.clone();
+          event.waitUntil(caches.open(OCR_CACHE).then((c) => c.put(req, copy)));
+        }
+        return res;
+      })),
+    );
+    return;
+  }
 
   // Navigáció: mindig az előre mentett index.html (offline is), háttérben frissítve
   const scopePath = new URL(self.registration.scope).pathname;

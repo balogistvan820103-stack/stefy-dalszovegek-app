@@ -212,7 +212,7 @@ function renderDashboard(body) {
     ['#/songs?tab=favorites', 'star', 'gold', 'Kedvencek', `${st.favorites} kedvenc`],
     ['#/songs?tab=recent', 'clock', 'teal', 'Legutóbbi', 'utolsó 20 dal'],
     ['#/setlists', 'mic', 'purple', 'Fellépés', `${st.setlists} lista`],
-    ['#/edit/new', 'plus', 'red', 'Új dal', 'felvétel'],
+    ['#/new', 'plus', 'red', 'Új dal', 'beírás, fotó, fájl'],
     ['#/tags', 'tag', 'pink', 'Címkék', `${st.tags} címke`],
   ];
   body.innerHTML = `
@@ -226,7 +226,7 @@ function renderDashboard(body) {
     <section class="home-section">
       <h2 class="section-title">${tile('clock', 'teal', 'tile-sm')} Legutóbb megnyitott</h2>
       ${recent.length ? `<div class="song-grid">${recent.map((s) => songCardHTML(s)).join('')}</div>`
-        : `<p class="muted pad">Még nem nyitottál meg dalt. ${st.songs ? '' : '<a href="#/edit/new">Vedd fel az első dalodat!</a>'}</p>`}
+        : `<p class="muted pad">Még nem nyitottál meg dalt. ${st.songs ? '' : '<a href="#/new">Vedd fel az első dalodat!</a>'}</p>`}
     </section>`;
   bindFavButtons(body);
 }

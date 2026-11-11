@@ -33,7 +33,13 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
 - Fellépés mód: teljes képernyő, előző / kedvenc / következő, lapozás húzással, „Ugrás a listára”,
   következő dal címe, Bluetooth lapozópedál (nyilak, PageUp/PageDown), zárolás
 - Képernyő ébren tartása minden képernyőn (Screen Wake Lock), háttérbe kerüléskor automatikus újrakérés
-- Dalszöveg: 8 betűstílus, 14–70 px betűméret, sortávolság, vastagság, igazítás, [Refrén] kiemelés
+- Dalszöveg: 8 betűstílus, 14–70 px betűméret, sortávolság, vastagság, igazítás
+- Refrénkiemelés (`js/lyrics.js`): refrénjel a Refrén / Refren / Refr / Ref (szögletes zárójelben, ponttal vagy
+  kettősponttal is) és az önálló R / R: / R. – külön sorban vagy a refrén első sorának elején. A refrén minden sora
+  színes csíkot és halvány hátteret kap az üres sorig vagy a következő jelig; szöveg nélküli jelnél „Refrén” címke.
+  A szín a Beállításokban választható; a dalok elmentett szövege nem változik. Szerkesztőben „Refrén” gomb.
+- Új dal: „Beírás / bemásolás”, „Fotózás füzetből” (Tesseract, magyar „best” csomag, teljesen a készüléken, offline),
+  „Fájlból”
 - Saját háttér a dalszöveg mögött (állítható sötétítéssel) és külön saját kezdőkép
 - Kezdőképernyő: főcím / alcím / szlogen külön szerkeszthető (szöveg, méret, szín, igazítás, pozíció), húzással
 - Kedvencek, utolsó 20 megnyitott dal

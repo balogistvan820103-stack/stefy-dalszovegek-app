@@ -7,3 +7,9 @@ node_modules/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# adatfeldolgozási előnézetek (személyes dallisták) – nem kerülnek fel
+_feldolgozas/
+
+# szövegfelismerő tesztképek (saját füzetfotók) – nem kerülnek fel
+_tesztkepek/

@@ -34,7 +34,7 @@ export function songsView(ctx) {
       <button type="button" class="btn btn-orange btn-sm" data-act="import-folder">${icon('folder')} Mappa importálása</button>
       <button type="button" class="btn btn-gold btn-sm" data-act="import-files">${icon('upload')} Fájlok tömeges importálása</button>
       <button type="button" class="btn btn-teal btn-sm" data-act="select">${icon('check')} Több dal kijelölése</button>
-      <a class="btn btn-purple btn-sm" href="#/edit/new">${icon('plus')} Új dal</a>
+      <a class="btn btn-purple btn-sm" href="#/new">${icon('plus')} Új dal</a>
     </div>
     <p class="muted small tool-note">Word (DOCX, DOC), TXT, ODT és RTF fájlokat és almappákat is beolvas; az almappa neve címke lesz.</p>
     <div class="sticky-tools">
@@ -59,7 +59,7 @@ export function songsView(ctx) {
       <div class="reorder-hint" hidden></div>
     </div>
     <div class="song-grid" id="songList"></div>
-    <a class="fab" href="#/edit/new" aria-label="Új dal">${icon('plus')}</a>
+    <a class="fab" href="#/new" aria-label="Új dal">${icon('plus')}</a>
     <div class="select-bar" hidden>
       <div class="sb-top"><span class="sb-count"><b>0</b> kijelölve</span>
         <button type="button" class="btn btn-ghost btn-sm" data-act="sel-all">${icon('check')} Összes látható</button>
@@ -126,7 +126,7 @@ export function songsView(ctx) {
     if (tab === 'favorites') return emptyState('star', 'gold', 'Még nincs kedvenc', 'A dalok melletti csillaggal jelölheted meg a kedvenceidet.');
     if (tab === 'recent') return emptyState('clock', 'teal', 'Még nincs megnyitott dal', 'Az utoljára megnyitott 20 dal itt jelenik meg.');
     if (tab === 'tag') return store.state.tags.size ? emptyState('tag', 'pink', 'Ehhez a címkéhez nincs dal', 'A dal szerkesztésekor vagy a „Több dal kijelölése” móddal rendelhetsz hozzá címkéket.') : emptyState('tag', 'pink', 'Még nincs címke', 'Hozz létre címkéket, és rendezd csoportokba a dalaidat.', '<a class="btn btn-primary" href="#/tags">Címkék kezelése</a>');
-    return emptyState('songs', 'blue', 'Még nincs dalod', 'Vedd fel az első dalt, importálj Word- vagy TXT-fájlokat, vagy egy teljes mappát, vagy tölts vissza egy mentést a Beállításokban.', '<a class="btn btn-primary" href="#/edit/new">Új dal felvétele</a>');
+    return emptyState('songs', 'blue', 'Még nincs dalod', 'Vedd fel az első dalt, importálj Word- vagy TXT-fájlokat, vagy egy teljes mappát, vagy tölts vissza egy mentést a Beállításokban.', '<a class="btn btn-primary" href="#/new">Új dal felvétele</a>');
   }
 
   function renderTabs() {
@@ -265,7 +265,7 @@ export function songsView(ctx) {
     nav: 'songs',
     el,
     restoreScroll: true,
-    actions: `<a class="icon-btn icon-btn-gold" href="#/edit/new" aria-label="Új dal">${icon('plus')}</a>`,
+    actions: `<a class="icon-btn icon-btn-gold" href="#/new" aria-label="Új dal">${icon('plus')}</a>`,
     cleanup: () => { stopSort(); persistUi.flush(); saveSize.flush(); },
   };
 }

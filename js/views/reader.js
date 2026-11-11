@@ -3,6 +3,7 @@
 import * as store from '../store.js';
 import { esc, toast, confirmBox, modal, clamp, debounce, fmtISODate } from '../util.js';
 import { icon, tile } from '../icons.js';
+import { markRefrain } from '../lyrics.js';
 import { applyReaderStyle, lyricsHTML, fontPanel, mediaURL, FONT_MIN, FONT_MAX, emptyState } from '../components.js';
 
 export async function readerView(ctx) {
@@ -176,8 +177,12 @@ export function editorView(ctx) {
           <button type="button" class="btn btn-pink btn-sm" data-act="add-tag">${icon('plus')} Címke</button>
         </div></div>
       <label class="switch-row"><input type="checkbox" name="favorite" ${song?.favorite ? 'checked' : ''}><span class="switch"></span><span>${icon('star')} Kedvenc</span></label>
-      <label class="field"><span class="field-label">Dalszöveg</span>
-        <textarea class="input lyrics-input" name="lyrics" rows="16" spellcheck="false" placeholder="Írd vagy másold be ide a dalszöveget.&#10;&#10;Tipp: a [Refrén] vagy [1. versszak] formájú sorok színesen kiemelve jelennek meg.">${esc(song?.lyrics || '')}</textarea></label>
+      <div class="field"><span class="field-label">Dalszöveg</span>
+        <div class="ref-btn-row">
+          <button type="button" class="btn btn-gold btn-sm" data-act="refrain">${icon('star')} Refrén</button>
+          <small class="muted">Jelöld ki a refrén sorait (vagy állj a kurzorral a versszakba), majd nyomd meg.</small>
+        </div>
+        <textarea class="input lyrics-input" name="lyrics" aria-label="Dalszöveg" rows="16" spellcheck="false" placeholder="Írd vagy másold be ide a dalszöveget.&#10;&#10;Tipp: a [Refrén] vagy [1. versszak] formájú sorok színesen kiemelve jelennek meg.">${esc(song?.lyrics || '')}</textarea></div>
       <div class="form-actions">
         ${!isNew ? `<button type="button" class="btn btn-danger" data-act="delete">${icon('trash')} Törlés</button>` : ''}
         <span class="spacer"></span>
@@ -223,6 +228,16 @@ export function editorView(ctx) {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     if (b.dataset.act === 'add-tag') addTag();
+    if (b.dataset.act === 'refrain') {
+      const ta = form.elements.lyrics;
+      const r = markRefrain(ta.value, ta.selectionStart ?? 0, ta.selectionEnd ?? 0);
+      if (!r.changed) { toast(r.reason, 'info', 3500); ta.focus(); return; }
+      ta.value = r.text;
+      ta.focus();
+      ta.setSelectionRange(r.selStart, r.selEnd);
+      dirty = true;
+      toast('[Refrén] jel beszúrva.', 'success', 1500);
+    }
     if (b.dataset.act === 'cancel') ctx.goBack(isNew ? '#/songs' : `#/song/${encodeURIComponent(song.id)}`);
     if (b.dataset.act === 'delete') {
       const ok = await confirmBox('Dal törlése', `Biztosan törlöd a(z) „${song.title}” dalt? A dal a fellépés-listákról is lekerül. Ez nem vonható vissza.`, { okLabel: 'Végleges törlés', danger: true });

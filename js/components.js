@@ -3,6 +3,7 @@
 import * as store from './store.js';
 import { esc, debounce, clamp } from './util.js';
 import { icon } from './icons.js';
+import { parseLyrics } from './lyrics.js';
 
 /* ---------------- Betűtípusok (csak a készüléken lévő rendszerbetűk – offline is működik) ---------------- */
 
@@ -27,16 +28,44 @@ export function applyReaderStyle(el, r = store.settings('reader')) {
   el.style.setProperty('--lyr-weight', r.fontWeight || '500');
   el.style.setProperty('--lyr-align', r.align || 'left');
   el.style.setProperty('--lyr-overlay', String(clamp(Number(r.overlay ?? 0.6), 0, 0.95)));
+  const ref = /^#[0-9a-f]{6}$/i.test(r.refColor || '') ? r.refColor : REF_COLORS[0];
+  el.style.setProperty('--ref', ref);
+  // a címke betűszíne a háttérszín világosságához igazodik, hogy mindig olvasható legyen
+  const [R, G, B] = [1, 3, 5].map((i) => parseInt(ref.slice(i, i + 2), 16));
+  el.style.setProperty('--ref-ink', (0.299 * R + 0.587 * G + 0.114 * B) > 150 ? '#1a1200' : '#ffffff');
 }
+
+/** Választható refrénkiemelő színek (az első az alapértelmezett). */
+export const REF_COLORS = ['#fbbf24', '#2dd4bf', '#60a5fa', '#c084fc', '#f472b6', '#fb7185', '#fb923c', '#4ade80', '#ffffff'];
 
 /* ---------------- Dalszöveg HTML ---------------- */
 
+/**
+ * Megjelenítés soronként. highlight = a „[Refrén] jellegű sorok színes kiemelése” kapcsoló:
+ * kikapcsolva minden sor pontosan úgy jelenik meg, ahogy be van írva.
+ */
 export function lyricsHTML(text, highlight = true) {
   if (!text) return '<span class="lyr-empty">Ehhez a dalhoz még nincs dalszöveg. Koppints a szerkesztés gombra a hozzáadáshoz.</span>';
-  return String(text).split('\n').map((line) => {
-    if (highlight && /^\s*\[[^\]]{1,40}\]\s*$/.test(line)) return `<span class="lyr-sec">${esc(line.trim().slice(1, -1))}</span>`;
-    return esc(line);
-  }).join('\n');
+  const line = (inner) => `<div class="lyr-l">${inner || '<br>'}</div>`;
+  if (!highlight) return String(text).split('\n').map((l) => line(esc(l))).join('');
+  let html = ''; let open = false;
+  const close = () => { if (open) { html += '</div>'; open = false; } };
+  for (const p of parseLyrics(text)) {
+    if (p.ref) {
+      // új jel = új refrénblokk (két egymást követő refrén külön keretet kap)
+      if (p.kind === 'ref-label' || p.mark) close();
+      if (!open) { html += '<div class="lyr-ref">'; open = true; }
+      if (p.kind === 'ref-label') html += line(`<span class="lyr-ref-label">${esc(p.text)}</span>`);
+      else html += line((p.mark ? `<span class="lyr-ref-mark">${esc(p.mark)}</span> ` : '') + esc(p.text));
+      continue;
+    }
+    close();
+    if (p.kind === 'gap') html += line('');
+    else if (p.kind === 'section') html += line(`<span class="lyr-sec">${esc(p.text)}</span>`);
+    else html += line(esc(p.text));
+  }
+  close();
+  return html;
 }
 
 /* ---------------- Dalkártya ---------------- */
@@ -195,12 +224,19 @@ export function fontPanel({ onChange, compact = false } = {}) {
         <button type="button" data-align="center" class="${r.align === 'center' ? 'on' : ''}" aria-label="Középre">${icon('align')}</button>
       </div>
     </div>
-    <label class="fp-row fp-check"><input type="checkbox" data-r="highlightSections" ${r.highlightSections ? 'checked' : ''}> <span>[Refrén] jellegű sorok színes kiemelése</span></label>`;
+    <label class="fp-row fp-check"><input type="checkbox" data-r="highlightSections" ${r.highlightSections ? 'checked' : ''}> <span>[Refrén] jellegű sorok színes kiemelése</span></label>
+    <div class="fp-row" data-ref-row>
+      <span class="fp-label">Refrén kiemelésének színe</span>
+      <div class="swatches">${REF_COLORS.map((c) => `<button type="button" class="swatch${(r.refColor || REF_COLORS[0]).toLowerCase() === c ? ' on' : ''}" data-refcolor="${c}" style="--c:${c}" aria-label="Refrén színe: ${c}"></button>`).join('')}
+        <label class="swatch swatch-custom" aria-label="Egyéni szín">${icon('palette')}<input type="color" data-r="refColor" value="${esc(/^#[0-9a-f]{6}$/i.test(r.refColor || '') ? r.refColor : REF_COLORS[0])}"></label></div>
+    </div>`;
 
   const persist = debounce(() => store.saveSettings('reader', store.settings('reader')), 300);
   // csak a panel saját mezőit kezeljük, így más beállítás (pl. sötétítés) nem íródik felül
-  const cur = { fontFamily: r.fontFamily, fontSize: r.fontSize, lineHeight: r.lineHeight, fontWeight: r.fontWeight, align: r.align, highlightSections: r.highlightSections };
+  const cur = { fontFamily: r.fontFamily, fontSize: r.fontSize, lineHeight: r.lineHeight, fontWeight: r.fontWeight, align: r.align, highlightSections: r.highlightSections, refColor: r.refColor || REF_COLORS[0] };
   const update = () => {
+    el.querySelector('[data-ref-row]').classList.toggle('is-off', !cur.highlightSections);
+    el.querySelectorAll('[data-refcolor]').forEach((x) => x.classList.toggle('on', x.dataset.refcolor === String(cur.refColor).toLowerCase()));
     el.querySelector('[data-val="size"]').textContent = `${cur.fontSize} px`;
     el.querySelector('[data-val="lh"]').textContent = Number(cur.lineHeight).toFixed(2);
     el.querySelector('[data-r="fontSize"]').value = cur.fontSize;
@@ -212,13 +248,16 @@ export function fontPanel({ onChange, compact = false } = {}) {
     const k = e.target.dataset.r;
     if (!k) return;
     if (k === 'highlightSections') cur[k] = e.target.checked;
+    else if (k === 'refColor') cur[k] = e.target.value;
     else cur[k] = Number(e.target.value);
     update();
   });
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    if (b.dataset.font) {
+    if (b.dataset.refcolor) {
+      cur.refColor = b.dataset.refcolor;
+    } else if (b.dataset.font) {
       cur.fontFamily = b.dataset.font;
       el.querySelectorAll('.font-choice').forEach((x) => x.classList.toggle('on', x === b));
     } else if (b.dataset.step) {
