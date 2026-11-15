@@ -9,6 +9,7 @@ import { fontPanel, applyReaderStyle, lyricsHTML, mediaURL, processImage, pickFi
 import { txtImportFlow } from '../txtimport.js';
 import { applyListTitleSize } from './songs.js';
 import { INST_FIELDS, INST_KEYS, instLine } from '../inst.js';
+import { openWelcome } from '../welcome.js';
 
 const SAMPLE = '[Refrén]\n[F]Mindig veled a [C]színpadon,\n[Dm]fényben, dalban, [Gm]hajnalon.\nSzól a zene, száll a szó,\nveled minden olyan jó.';
 
@@ -133,7 +134,9 @@ export function settingsView(ctx) {
 
     <section class="card set-sec about">
       <h2 class="sec-head">${tile('songs', 'blue')} Névjegy</h2>
-      <p><b>STEFY Dalszövegek</b> · ${esc(ctx.version)}<br><span class="muted">Offline digitális zenész-könyv. Nincs fiók, nincs reklám, nincs automatikus adatküldés – minden adat ezen az eszközön marad.</span></p>
+      <button type="button" class="btn btn-ghost" data-act="welcome">${icon('sparkles')} Üdvözlő újra megnyitása</button>
+      <p class="muted small">Az üdvözlő a meglévő dalaidhoz, listáidhoz és beállításaidhoz nem nyúl – csak az változik, amit benne te magad átírsz vagy kérsz (pl. mintadal).</p>
+      <p><b>DalPad</b> · ${esc(ctx.version)}<br><span class="muted">Offline dalszöveg- és akkordkönyv zenészeknek. Nincs fiók, nincs reklám, nincs automatikus adatküldés – minden adat ezen az eszközön marad.</span></p>
     </section>`;
 
   /* ---- ébren tartás ---- */
@@ -260,7 +263,7 @@ export function settingsView(ctx) {
     const name = backup.exportFileName();
     if (share) {
       try {
-        await navigator.share({ files: [new File([blob], name, { type: 'application/json' })], title: 'STEFY Dalszövegek mentés' });
+        await navigator.share({ files: [new File([blob], name, { type: 'application/json' })], title: 'DalPad mentés' });
         return;
       } catch (e) {
         if (e?.name === 'AbortError') return;
@@ -340,6 +343,11 @@ export function settingsView(ctx) {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     switch (b.dataset.act) {
+      case 'welcome': {
+        const r = await openWelcome({ reopen: true });
+        if (r.sampleId) ctx.go(`#/song/${encodeURIComponent(r.sampleId)}`); else ctx.rerender();
+        break;
+      }
       case 'pick-reader': pickBg('bg-reader', 'A dalszöveg'); break;
       case 'del-reader': delBg('bg-reader', 'dalszöveg'); break;
       case 'pick-home': pickBg('bg-home', 'A kezdőképernyő'); break;

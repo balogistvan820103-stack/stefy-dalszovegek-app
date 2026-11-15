@@ -1,7 +1,7 @@
 {
-  "name": "STEFY Dalszövegek",
-  "short_name": "STEFY Dalok",
-  "description": "Offline digitális zenész-könyv dalszövegekhez és fellépésekhez.",
+  "name": "DalPad – dalszöveg és akkord",
+  "short_name": "DalPad",
+  "description": "DalPad – offline dalszöveg- és akkordkönyv zenészeknek, fellépésekhez.",
   "lang": "hu",
   "dir": "ltr",
   "id": "./",

@@ -55,7 +55,7 @@ export async function homeView(ctx) {
 
   if (!editing) {
     renderDashboard(body);
-    return { id: 'home', title: 'STEFY Dalszövegek', back: null, nav: 'home', el };
+    return { id: 'home', title: 'DalPad', back: null, nav: 'home', el };
   }
 
   /* ---------- Szerkesztési mód ---------- */
@@ -128,16 +128,16 @@ export async function homeView(ctx) {
     if (b.dataset.color) { work[sel].color = b.dataset.color; markDirty(); paint(); syncPanel(); return; }
     if (b.dataset.align) { work[sel].align = b.dataset.align; markDirty(); paint(); syncPanel(); return; }
     const act = b.dataset.act;
-    if (act === 'reset-one') { work[sel] = store.clone(store.DEFAULTS.home[sel]); markDirty(); paint(); syncPanel(); }
+    if (act === 'reset-one') { work[sel] = store.clone(store.homeDefaults()[sel]); markDirty(); paint(); syncPanel(); }
     if (act === 'reset-all') {
       if (await confirmBox('Alaphelyzet', 'Mindhárom felirat (szöveg, méret, szín, igazítás, pozíció) és a sötétítés visszaáll az eredeti értékre. A háttérkép megmarad.', { okLabel: 'Visszaállítás' })) {
-        Object.assign(work, store.clone(store.DEFAULTS.home)); markDirty(); paint(); syncPanel();
+        Object.assign(work, store.homeDefaults()); markDirty(); paint(); syncPanel();
         toast('Alaphelyzet betöltve – a megtartáshoz nyomd meg a Mentést.');
       }
     }
     if (act === 'cancel') { dirty = false; ctx.go('#/', { replace: true }); }
     if (act === 'save') {
-      for (const k of KEYS) if (!work[k].text.trim()) work[k].text = store.DEFAULTS.home[k].text;
+      for (const k of KEYS) if (!work[k].text.trim()) work[k].text = store.homeDefaults()[k].text;
       await store.saveSettings('home', work);
       dirty = false;
       toast('Kezdőképernyő elmentve.', 'success');

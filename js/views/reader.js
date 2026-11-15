@@ -33,6 +33,7 @@ export async function readerView(ctx) {
         ${song.artist || tags.length ? `<div class="reader-meta">${song.artist ? `<span class="artist">${esc(song.artist)}</span>` : ''}
           ${tags.map((t) => `<a class="mini-chip" style="--c:${esc(t.color)}" href="#/songs?tab=tag&tag=${encodeURIComponent(t.id)}">${esc(t.name)}</a>`).join('')}</div>` : ''}
       </header>
+      ${song.sample ? `<div class="sample-note">${icon('info')}<span>Ez a DalPad mintadala: megmutatja az akkordokat, a refrénkiemelést és a hangszer-jegyzetet.</span><button type="button" class="btn btn-danger btn-sm" data-sample-del>${icon('trash')} Mintadal törlése</button></div>` : ''}
       <div class="reader-inst" hidden></div>
       <div class="chord-bar"></div>
       <div class="lyrics"></div>
@@ -57,6 +58,11 @@ export async function readerView(ctx) {
 
   /* ----- akkordok: ki/be, transzponálás, Akkordozás mód ----- */
   const instEl = el.querySelector('.reader-inst');
+  el.querySelector('[data-sample-del]')?.addEventListener('click', async () => {
+    await store.deleteSong(id);
+    toast('A mintadal törölve.', 'success');
+    ctx.go('#/songs', { replace: true });
+  });
   const paintChordBar = () => {
     const it = songInstLine(song);
     instEl.hidden = !it;

@@ -1,4 +1,4 @@
-/* STEFY Dalszövegek – színpadi, színes, jól olvasható felület */
+/* DalPad – színpadi, színes, jól olvasható felület */
 
 :root {
   --bg: #0a0820;
@@ -891,3 +891,18 @@ body.no-clock .clock, body.no-clock .pf-clock { display: none; }
 .check-row input { width: 20px; height: 20px; accent-color: var(--inst); }
 .inst-sample { font-size: 0.9rem; }
 .inst-sample .song-inst { display: inline; white-space: normal; }
+
+/* ---------- Üdvözlő ---------- */
+.welcome { position: relative; width: min(100%, 520px); padding-top: 22px; }
+.welcome .modal-title { padding-right: 40px; display: flex; align-items: center; gap: 8px; }
+.welcome-step { display: flex; flex-direction: column; gap: 12px; min-height: 230px; }
+.welcome-close { position: absolute; top: 10px; right: 10px; }
+.welcome-dots { display: flex; justify-content: center; gap: 8px; margin: 14px 0 4px; }
+.welcome-dots i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); }
+.welcome-dots i.on { background: var(--gold); transform: scale(1.25); }
+.welcome .modal-buttons { flex-wrap: wrap; }
+.welcome-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.welcome-list li { display: flex; gap: 12px; align-items: flex-start; line-height: 1.4; }
+.welcome-list .i { flex: none; width: 26px; height: 26px; color: var(--gold); margin-top: 1px; }
+.sample-note { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border-radius: 14px; background: rgba(96, 165, 250, 0.14); border: 1px solid rgba(96, 165, 250, 0.45); font-size: 0.95rem; }
+.sample-note span { flex: 1 1 220px; }

@@ -6,7 +6,21 @@ import { norm, uid, collator, todayISO } from './util.js';
 import { stripChords, normShift } from './chords.js';
 import { cleanInst, instSearchText, INST_KEYS } from './inst.js';
 
-export const DEFAULT_DB = 'stefy-dalszovegek';
+export const DEFAULT_DB = 'stefy-dalszovegek'; // belső név – NEM változtatható (a dalok ebben vannak)
+
+/**
+ * A régi (1.7-ig érvényes) kezdőkép-alapértékek. A meglévő felhasználóknál ezeket menti el
+ * az első induláskor (ha még nem volt elmentett kezdőképük), így az ő kezdőképük nem változik,
+ * amikor az új, semleges alapértékek életbe lépnek.
+ */
+export const LEGACY_HOME = Object.freeze({
+  title: { text: 'STEFY-BAND', size: 60, color: '#ffd166', align: 'center', x: 50, y: 33 },
+  subtitle: { text: 'DALSZÖVEG', size: 28, color: '#2ee6d6', align: 'center', x: 50, y: 55 },
+  slogan: { text: 'Mindig veled a színpadon.', size: 20, color: '#f5d0fe', align: 'center', x: 50, y: 73 },
+  overlay: 0.35,
+});
+// az adatbázis-séma jelzője a beállítások között (nem kerül a mentésbe); 2 = a kezdőkép-megőrzés már lefutott
+const SCHEMA = 2;
 
 export const TAG_COLORS = ['#3b82f6', '#a855f7', '#f59e0b', '#14b8a6', '#ef4444', '#ec4899', '#f97316', '#22c55e', '#6366f1', '#06b6d4', '#eab308', '#d946ef'];
 
@@ -22,9 +36,10 @@ export const DEFAULTS = Object.freeze({
     refColor: '#fbbf24',
   },
   home: {
-    title: { text: 'STEFY-BAND', size: 60, color: '#ffd166', align: 'center', x: 50, y: 33 },
-    subtitle: { text: 'DALSZÖVEG', size: 28, color: '#2ee6d6', align: 'center', x: 50, y: 55 },
-    slogan: { text: 'Mindig veled a színpadon.', size: 20, color: '#f5d0fe', align: 'center', x: 50, y: 73 },
+    // semleges alapértékek új felhasználóknak (a főcím az üdvözlőben megadott név, vagy „DalPad”)
+    title: { text: 'DalPad', size: 60, color: '#ffd166', align: 'center', x: 50, y: 33 },
+    subtitle: { text: 'DALSZÖVEG · AKKORD', size: 28, color: '#2ee6d6', align: 'center', x: 50, y: 55 },
+    slogan: { text: 'Minden dalod kéznél – a színpadon is.', size: 20, color: '#f5d0fe', align: 'center', x: 50, y: 73 },
     overlay: 0.35,
   },
   night: { date: '', played: [], order: {} },
@@ -40,6 +55,8 @@ export const DEFAULTS = Object.freeze({
     chordNotation: 'hu', // 'hu': H = fehér, B = fekete billentyű · 'intl': B = fehér, Bb = fekete
     showInst: true, // hangszer-jegyzetsor a listákban és fellépés módban
     instFields: [...INST_KEYS], // a jegyzetsorban megjelenő mezők
+    bandName: '', // az üdvözlőben megadott zenekar-/előadónév (a kezdőkép főcímének alapja)
+    welcomeDone: false, // az első indításkori üdvözlő lezárult
     listTitleSize: 19,
     songsTab: 'all',
     tagFilter: null,
@@ -66,6 +83,7 @@ export const state = {
   setlists: new Map(),
   settings: clone(DEFAULTS),
   recent: [],
+  fresh: false, // új, üres felhasználó: nincs dal, lista, címke, kép és mentett beállítás
 };
 
 export function clone(v) {
@@ -97,10 +115,46 @@ export async function init(dbName = DEFAULT_DB) {
 
 export function getDB() { return db; }
 
+/**
+ * Egyszeri átállás a semleges alapértékekre: a meglévő felhasználónál (akinek van dala, listája,
+ * címkéje, képe vagy mentett beállítása) a jelenlegi kezdőképét elmenti, MIELŐTT az új alapértékek
+ * érvényesülnének. Csak egyszer fut (a séma-jelző után már nem). Visszaad: a friss beállításrekordok.
+ */
+async function migrate(settings, existing) {
+  if (settings.some((r) => r.key === 'schema' && Number(r.value?.v) >= SCHEMA)) return settings;
+  const puts = [{ key: 'schema', value: { v: SCHEMA } }];
+  if (existing) {
+    const homeRec = settings.find((r) => r.key === 'home');
+    // a hiányzó mezők a régi alapértékből jönnek – pontosan az, ami eddig a képernyőn látszott
+    const home = deepMerge(LEGACY_HOME, homeRec?.value || {});
+    if (!homeRec || JSON.stringify(home) !== JSON.stringify(homeRec.value)) puts.push({ key: 'home', value: home });
+    const appRec = settings.find((r) => r.key === 'app');
+    if (!appRec?.value?.bandName) puts.push({ key: 'app', value: { ...(appRec?.value || {}), bandName: home.title.text, welcomeDone: true } });
+  }
+  await tx(db, 'settings', 'readwrite', (s) => { for (const r of puts) s.settings.put(r); });
+  const byKey = new Map(settings.map((r) => [r.key, r]));
+  for (const r of puts) byKey.set(r.key, r);
+  return [...byKey.values()];
+}
+
+function countStore(name) {
+  return new Promise((resolve) => {
+    try {
+      const req = db.transaction(name, 'readonly').objectStore(name).count();
+      req.onsuccess = () => resolve(req.result || 0);
+      req.onerror = () => resolve(0);
+    } catch { resolve(0); }
+  });
+}
+
 export async function reload() {
-  const [songs, tags, setlists, settings] = await Promise.all([
-    getAll(db, 'songs'), getAll(db, 'tags'), getAll(db, 'setlists'), getAll(db, 'settings'),
+  let [songs, tags, setlists, settings, media] = await Promise.all([
+    getAll(db, 'songs'), getAll(db, 'tags'), getAll(db, 'setlists'), getAll(db, 'settings'), countStore('media'),
   ]);
+  const userSettings = settings.filter((r) => r.key !== 'schema');
+  const existing = songs.length + tags.length + setlists.length + userSettings.length + media > 0;
+  settings = await migrate(settings, existing);
+  state.fresh = !existing;
   state.songs = new Map(songs.map((s) => [s.id, s]));
   state.tags = new Map(tags.map((t) => [t.id, t]));
   state.setlists = new Map(setlists.map((l) => [l.id, l]));
@@ -153,6 +207,7 @@ export async function saveSong(input) {
   song.title = cleanText(input.title) || 'Névtelen dal';
   song.artist = cleanText(input.artist);
   song.lyrics = cleanLyrics(input.lyrics);
+  if (input.sample === true) song.sample = true; // az üdvözlőben kért mintadal (egy koppintással törölhető)
   if (Array.isArray(input.tagIds)) song.tagIds = [...new Set(input.tagIds)].filter((id) => state.tags.has(id));
   if (typeof input.favorite === 'boolean') song.favorite = input.favorite;
   // hangszer-jegyzet: csak ha a hívó megadja (különben a meglévő marad)
@@ -479,6 +534,14 @@ export function setlistSongs(id) {
 
 export function settings(section) { return state.settings[section]; }
 
+/** A kezdőkép alaphelyzete: a főcím a megadott zenekarnév (ha van), különben „DalPad”. */
+export function homeDefaults() {
+  const h = clone(DEFAULTS.home);
+  const band = String(state.settings.app?.bandName || '').trim();
+  if (band) h.title.text = band;
+  return h;
+}
+
 export async function saveSettings(section, value) {
   state.settings[section] = deepMerge(DEFAULTS[section], value);
   await tx(db, 'settings', 'readwrite', (s) => { s.settings.put({ key: section, value: state.settings[section] }); });
@@ -541,6 +604,8 @@ export async function commitImport(plan) {
       s.tags.clear();
       s.setlists.clear();
       s.settings.clear();
+      // a visszaállított beállítások már a mostani formátumúak: a kezdőkép-átállás ne fusson újra
+      s.settings.put({ key: 'schema', value: { v: SCHEMA } });
       if (plan.media) s.media.clear();
     }
     for (const t of plan.tags || []) s.tags.put(t);

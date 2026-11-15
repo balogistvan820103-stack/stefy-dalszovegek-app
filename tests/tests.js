@@ -712,6 +712,124 @@ await test('Keresés a style és a bank nevére; mentésben benne van, régi men
   for (const x of [a, b, c]) await store.deleteSong(x.id);
 });
 
+/* ---------------- DalPad: névváltás, semleges kezdőkép, üdvözlő ---------------- */
+
+const { openDB, tx: rawTx } = await import('../js/db.js');
+const tmpDBs = [];
+async function withDB(seed, fn) {
+  const name = `stefy-dalszovegek-TESZT-mig-${Date.now()}-${tmpDBs.length}`;
+  tmpDBs.push(name);
+  if (seed) { const d = await openDB(name); await rawTx(d, ['songs', 'settings', 'media'], 'readwrite', (s) => seed(s)); d.close(); }
+  await store.init(name);
+  try { await fn(name); } finally { store.getDB().close(); await deleteDB(name); }
+}
+
+await test('(a) Új, üres felhasználó: üdvözlő jelenik meg, semleges kezdőkép („DalPad”)', async () => {
+  const welcome = await import('../js/welcome.js');
+  await withDB(null, async (name) => {
+    assert(store.state.fresh, 'új felhasználó');
+    assert(welcome.shouldShowWelcome(), 'az üdvözlő megjelenik');
+    eq(store.settings('home').title.text, 'DalPad', 'semleges főcím');
+    assert(!/STEFY/i.test(JSON.stringify(store.settings('home'))), 'nincs STEFY a kezdőképen');
+    await store.reload();
+    assert(welcome.shouldShowWelcome(), 'újraindítás után is (amíg nem zárta le)');
+    // üdvözlő lezárása zenekarnévvel (ahogy az üdvözlő teszi)
+    const home = store.clone(store.settings('home')); home.title.text = 'Hajnal Zenekar';
+    await store.saveSettings('home', home);
+    await store.patchSettings('app', { welcomeDone: true, bandName: 'Hajnal Zenekar', chordNotation: 'intl' });
+    store.getDB().close(); await store.init(name);
+    assert(!store.state.fresh && !welcome.shouldShowWelcome(), 'lezárás után nem jelenik meg újra');
+    eq(store.settings('home').title.text, 'Hajnal Zenekar', 'a megadott név a főcím (és nem írja felül a régi STEFY-BAND)');
+    eq(store.homeDefaults().title.text, 'Hajnal Zenekar', 'alaphelyzetnél is a megadott név');
+    eq(store.settings('app').chordNotation, 'intl', 'akkordjelölés elmentve');
+  });
+  await withDB(null, async (name) => {
+    await store.patchSettings('app', { welcomeDone: true }); // mindent kihagyott
+    store.getDB().close(); await store.init(name);
+    eq(store.settings('home').title.text, 'DalPad', 'név nélkül „DalPad” marad (a régi kezdőkép-megőrzés nem fut rá)');
+  });
+});
+
+await test('(b) Meglévő felhasználó (dalok + beállítások, kezdőkép-szerkesztés nélkül): NEM jön üdvözlő, a kezdőkép STEFY-BAND marad', async () => {
+  const welcome = await import('../js/welcome.js');
+  // 1.7-es állapot: dal és mentett beállítások vannak, de a kezdőkép sosem volt elmentve
+  await withDB((s) => {
+    s.songs.put({ id: 's_regi', title: 'Régi dalom', lyrics: '[Am]szöveg', tagIds: [], favorite: true, order: 1, createdAt: 1, updatedAt: 1 });
+    s.settings.put({ key: 'app', value: { showClock: false, chordNotation: 'hu' } });
+    s.settings.put({ key: 'reader', value: { fontSize: 44 } });
+  }, async (name) => {
+    assert(!store.state.fresh && !welcome.shouldShowWelcome(), 'nincs üdvözlő');
+    eq(store.settings('home'), store.clone(store.LEGACY_HOME), 'a kezdőkép pontosan a régi (STEFY-BAND, DALSZÖVEG, szlogen)');
+    eq([store.settings('app').showClock, store.settings('reader').fontSize, store.getSong('s_regi').title], [false, 44, 'Régi dalom'], 'dalok és beállítások változatlanok');
+    store.getDB().close(); await store.init(name);
+    eq(store.settings('home').title.text, 'STEFY-BAND', 'újraindítás után is');
+    eq(store.homeDefaults().title.text, 'STEFY-BAND', 'a főcím alaphelyzete is a régi név');
+  });
+  // csak beállítás van (dal nincs) → akkor is meglévő felhasználó
+  await withDB((s) => { s.settings.put({ key: 'reader', value: { fontSize: 50 } }); }, async () => {
+    assert(!welcome.shouldShowWelcome(), 'mentett beállításnál sincs üdvözlő');
+    eq(store.settings('home').title.text, 'STEFY-BAND', 'kezdőkép megőrizve');
+  });
+  // korábban szerkesztett (akár hiányos) kezdőkép: a saját értékek maradnak, a hiányzók a régi alapértékből
+  await withDB((s) => {
+    s.songs.put({ id: 's1', title: 'x', lyrics: '', tagIds: [], order: 1, createdAt: 1, updatedAt: 1 });
+    s.settings.put({ key: 'home', value: { title: { text: 'Saját cím', color: '#ffffff' }, overlay: 0.5 } });
+  }, async () => {
+    const h = store.settings('home');
+    eq([h.title.text, h.title.color, h.title.size, h.subtitle.text, h.slogan.text, h.overlay], ['Saját cím', '#ffffff', 60, 'DALSZÖVEG', 'Mindig veled a színpadon.', 0.5], 'saját + régi alapértékek');
+  });
+  // csak háttérkép van
+  await withDB((s) => { s.media.put({ key: 'bg-home', blob: new Blob(['x'], { type: 'image/jpeg' }), type: 'image/jpeg', size: 1, updatedAt: 1 }); }, async () => {
+    assert(!welcome.shouldShowWelcome(), 'saját háttérképnél sincs üdvözlő');
+    eq(store.settings('home').title.text, 'STEFY-BAND', 'kezdőkép megőrizve');
+  });
+});
+
+await test('(c) Régi és új nevű mentésfájl is betöltődik; mentésfájl új neve; belső nevek változatlanok', async () => {
+  eq(store.DEFAULT_DB, 'stefy-dalszovegek', 'adatbázis neve változatlan');
+  assert(backup.exportFileName().startsWith('dalpad-mentes-') && backup.exportFileName().endsWith('.json'), 'új fájlnév');
+  await withDB(null, async () => {
+    await store.saveSong({ title: 'Mentett dal', lyrics: '[Am]szöveg', inst: { bank: 'B1' } });
+    const data = await backup.buildExport({ includeMedia: false });
+    eq(data.app, 'stefy-dalszovegek', 'a mentés belső azonosítója változatlan');
+    const json = JSON.stringify(data);
+    for (const fname of ['stefy-dalszovegek-mentes-2026-01-01-1200.json', backup.exportFileName()]) {
+      const text = await backup.readFile(new File([json], fname, { type: 'application/json' }));
+      const { data: d, summary } = backup.parseBackup(text);
+      eq([d.songs[0].title, d.songs[0].inst.bank, summary.songs], ['Mentett dal', 'B1', 1], `betöltődik: ${fname}`);
+    }
+    // régi mentés kezdőkép-beállítással: teljes visszaállításkor a mentett kezdőkép jön vissza
+    const old = { app: 'stefy-dalszovegek', format: 1, songs: [{ id: 'o', title: 'Régi', lyrics: 'r' }], settings: { home: store.clone(store.LEGACY_HOME), app: { showClock: false } } };
+    const { data: od } = backup.parseBackup(JSON.stringify(old));
+    await backup.applyImport(od, 'replace');
+    eq(store.settings('home').title.text, 'STEFY-BAND', 'visszaállítás után a mentett kezdőkép');
+    await store.reload();
+    eq(store.settings('home').title.text, 'STEFY-BAND', 'és újraindítás után is');
+  });
+  let threw = '';
+  try { backup.parseBackup('{"semmi":1}'); } catch (e) { threw = e.message; }
+  assert(threw.includes('DalPad') && !threw.includes('STEFY'), 'hibaüzenet az új névvel');
+});
+
+await test('Mintadal: saját szöveg akkordokkal, refrénnel, hangszer-jegyzettel; törölhető', async () => {
+  const w = await import('../js/welcome.js');
+  const { hasChords } = await import('../js/chords.js');
+  const { parseLyrics } = await import('../js/lyrics.js');
+  await withDB(null, async () => {
+    const s = await w.addSampleSong();
+    const again = await w.addSampleSong();
+    eq(again.id, s.id, 'nem kerül be kétszer');
+    assert(s.sample && hasChords(s.lyrics), 'akkordos mintadal');
+    assert(parseLyrics(s.lyrics).some((p) => p.kind === 'ref-label'), 'van refrén');
+    assert(s.inst.bank && s.inst.key && s.inst.tempo, 'van hangszer-jegyzet');
+    await store.deleteSong(s.id);
+    eq(store.state.songs.size, 0, 'törölhető');
+  });
+});
+
+// vissza a fő teszt-adatbázishoz
+await store.init(DB);
+
 await test('Teljesítmény: 3000 dal keresése gyors', async () => {
   const words = ['szerelem', 'éjszaka', 'hajnal', 'tánc', 'nyár', 'csillag', 'tenger', 'szív', 'zene', 'álom'];
   const songs = [];

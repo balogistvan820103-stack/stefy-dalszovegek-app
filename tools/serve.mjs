@@ -50,5 +50,5 @@ createServer(async (req, res) => {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Nem található');
   }
 }).listen(port, host, () => {
-  console.log(`STEFY Dalszövegek: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}/`);
+  console.log(`DalPad: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}/`);
 });

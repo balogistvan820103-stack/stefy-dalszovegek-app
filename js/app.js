@@ -14,8 +14,9 @@ import { newSongView, scanView } from './views/scan.js';
 import * as ocr from './ocr.js';
 import { initSwipeBack } from './swipeback.js';
 import * as night from './night.js';
+import { shouldShowWelcome, openWelcome } from './welcome.js';
 
-export const APP_VERSION = '1.7.0';
+export const APP_VERSION = '1.8.0';
 
 const routes = [
   { re: /^\/(?:home)?$/, view: homeView },
@@ -264,6 +265,12 @@ async function start() {
   startClock();
   await route(true);
   requestPersistence();
+  // üdvözlő: csak teljesen új, üres felhasználónál (meglévő dalok/beállítások mellett soha)
+  if (shouldShowWelcome()) {
+    const r = await openWelcome();
+    if (r.sampleId) go(`#/song/${encodeURIComponent(r.sampleId)}`);
+    else route(true); // a kezdőkép az új névvel
+  }
   // a szövegfelismerő fájljainak csendes letöltése az offline tárolóba (egyszer, ha van internet)
   setTimeout(async () => {
     try {

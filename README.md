@@ -1,8 +1,15 @@
-# STEFY Dalszövegek
+# DalPad
+
+Dalszöveg- és akkordkönyv zenészeknek (korábbi neve: STEFY Dalszövegek).
 
 Önálló, offline-first digitális zenész-könyv (PWA) Android-telefonra és tabletre.
 Nincs fiók, nincs reklám, nincs automatikus adatküldés – minden adat az eszközön, a böngésző
 helyi tárolójában (IndexedDB) marad. A régi STEFY-BAND alkalmazástól teljesen független.
+
+Belső nevek, amelyek a névváltás után is változatlanok (különben elveszhetnének a dalok vagy a régi mentések):
+az adatbázis neve (`stefy-dalszovegek`), a mentésben lévő azonosító (`app: 'stefy-dalszovegek'`) és a
+service worker gyorsítótár-előtagja (`stefy-dalszovegek-app-`). A régi `stefy-dalszovegek-mentes-…` és az új
+`dalpad-mentes-…` nevű mentésfájlok egyaránt betölthetők.
 
 ## Indítás a számítógépen (helyi előnézet)
 
@@ -14,6 +21,8 @@ Majd böngészőben: <http://localhost:5180/>
 
 - `5180` – éles előnézet (a saját adataid itt lesznek)
 - `5181` – külön tesztkörnyezet (más port = külön tároló, a teszt nem nyúl a valódi adatokhoz)
+- `5182` – „új felhasználó” próbakörnyezet: üres tároló, itt látszik az első indításkori üdvözlő
+  (`node tools/serve.mjs 5182`, majd <http://localhost:5182/>)
 - Automatikus adatréteg-tesztek: <http://localhost:5181/tests/> (ideiglenes teszt-adatbázist használ, majd törli)
 
 ## Telepítés Android-telefonra (később)
@@ -59,6 +68,12 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
   javaslat az akkordokból (egy koppintással elfogadható). Egysoros jegyzetsor a listákban a dalcím alatt, fellépés módban
   a szöveg fölött, és a következő dal mellett. Transzponált dalnál az eltolt hangnem és az eltolás (pl. „Em (+2)”) látszik,
   a mentett hangnem nem változik. A style és a bank neve kereshető. Beállításokban ki/be és mezőnként választható.
+- Üdvözlő (`js/welcome.js`): csak teljesen új, üres felhasználónál (nincs dal, lista, címke, kép, mentett beállítás);
+  zenekarnév → kezdőkép főcíme, akkordjelölés, dalok bevitele, mentés fontossága; minden lépés kihagyható; a végén
+  kérhető saját, kitalált szövegű mintadal (akkordok, refrén, hangszer-jegyzet), az olvasóban egy koppintással törölhető.
+  Beállítások → Névjegy → „Üdvözlő újra megnyitása” (a meglévő adatokhoz nem nyúl).
+- Semleges kezdőkép új felhasználóknak. A meglévő felhasználók kezdőképét (pl. STEFY-BAND) az 1.8.0 első
+  indításakor elmenti (`store.js` – `migrate`), így az nem változik.
 - Új dal: „Beírás / bemásolás”, „Fotózás füzetből” (Tesseract, magyar „best” csomag, teljesen a készüléken, offline),
   „Fájlból”
 - Saját háttér a dalszöveg mögött (állítható sötétítéssel) és külön saját kezdőkép

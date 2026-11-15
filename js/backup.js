@@ -35,7 +35,8 @@ export async function buildExport({ includeMedia = true } = {}) {
 export function exportFileName() {
   const d = new Date();
   const hm = `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
-  return `stefy-dalszovegek-mentes-${todayISO()}-${hm}.json`;
+  // új név; a régi „stefy-dalszovegek-mentes-…” fájlok ugyanúgy betölthetők (a tartalom számít, nem a név)
+  return `dalpad-mentes-${todayISO()}-${hm}.json`;
 }
 
 export async function exportBlob(opts) {
@@ -82,7 +83,7 @@ export function parseBackup(text, { allowEmpty = false } = {}) {
   }
   if (!raw || typeof raw !== 'object') throw new ImportError('A fájl nem tartalmaz értelmezhető adatot.');
   const songsRaw = Array.isArray(raw) ? raw : pick(raw, ['songs', 'dalok', 'items']);
-  if (!Array.isArray(songsRaw)) throw new ImportError('A fájlban nem található dallista („songs”). Ez nem STEFY dalszöveg-mentés.');
+  if (!Array.isArray(songsRaw)) throw new ImportError('A fájlban nem található dallista („songs”). Ez nem DalPad-mentés.');
 
   const warnings = [];
   const tags = [];
