@@ -6,7 +6,8 @@ import { icon, tile } from '../icons.js';
 import { markRefrain } from '../lyrics.js';
 import { hasChords, usedChords, normShift, shiftLabel, chordFormatter, convertChordLines } from '../chords.js';
 import { chordEditor } from '../chordedit.js';
-import { applyReaderStyle, lyricsHTML, fontPanel, mediaURL, FONT_MIN, FONT_MAX, emptyState, fitColumns } from '../components.js';
+import { cleanInst, suggestKey } from '../inst.js';
+import { applyReaderStyle, lyricsHTML, fontPanel, mediaURL, FONT_MIN, FONT_MAX, emptyState, fitColumns, songInstLine } from '../components.js';
 
 export async function readerView(ctx) {
   const id = ctx.params[0];
@@ -32,6 +33,7 @@ export async function readerView(ctx) {
         ${song.artist || tags.length ? `<div class="reader-meta">${song.artist ? `<span class="artist">${esc(song.artist)}</span>` : ''}
           ${tags.map((t) => `<a class="mini-chip" style="--c:${esc(t.color)}" href="#/songs?tab=tag&tag=${encodeURIComponent(t.id)}">${esc(t.name)}</a>`).join('')}</div>` : ''}
       </header>
+      <div class="reader-inst" hidden></div>
       <div class="chord-bar"></div>
       <div class="lyrics"></div>
     </article>
@@ -54,7 +56,11 @@ export async function readerView(ctx) {
   };
 
   /* ----- akkordok: ki/be, transzponálás, Akkordozás mód ----- */
+  const instEl = el.querySelector('.reader-inst');
   const paintChordBar = () => {
+    const it = songInstLine(song);
+    instEl.hidden = !it;
+    instEl.textContent = it;
     const has = hasChords(song.lyrics);
     const show = store.settings('app').showChords !== false;
     const sh = normShift(song.transpose);
@@ -242,6 +248,58 @@ export async function convertChordLinesDialog(text) {
   return ok ? out : null;
 }
 
+/* ---------------- Hangszer-jegyzet a szerkesztőben ---------------- */
+
+function instFieldsHTML(song) {
+  const i = cleanInst(song?.inst);
+  const any = Object.keys(i).length > 0;
+  return `<details class="inst-sec"${any ? ' open' : ''}>
+    <summary>${icon('mic')} Hangszer-jegyzet <small class="muted">(nem kötelező – hangnem, tempó, style, regisztráció)</small></summary>
+    <div class="inst-grid">
+      <label class="field"><span class="field-label">Hangnem</span>
+        <input class="input" name="inst-key" maxlength="12" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="pl. Dm" value="${esc(i.key || '')}">
+        <span class="key-suggest" hidden></span></label>
+      <label class="field"><span class="field-label">Tempó (BPM)</span>
+        <input class="input" name="inst-tempo" type="number" inputmode="numeric" min="20" max="400" step="1" placeholder="pl. 120" value="${i.tempo || ''}"></label>
+      <label class="field inst-wide"><span class="field-label">Style / ritmus neve</span>
+        <input class="input" name="inst-style" maxlength="60" autocomplete="off" placeholder="pl. Polka, 8Beat, Lakodalmas 2" value="${esc(i.style || '')}"></label>
+      <label class="field"><span class="field-label">Regisztráció: bank / készlet neve</span>
+        <input class="input" name="inst-bank" maxlength="60" autocomplete="off" placeholder="pl. Lakodalom 2" value="${esc(i.bank || '')}"></label>
+      <label class="field"><span class="field-label">Regisztráció: gomb száma</span>
+        <select class="input" name="inst-button"><option value="">–</option>${Array.from({ length: 10 }, (_, n) => `<option value="${n + 1}"${i.button === n + 1 ? ' selected' : ''}>${n + 1}</option>`).join('')}</select></label>
+      <label class="field inst-wide"><span class="field-label">Megjegyzés</span>
+        <input class="input" name="inst-memo" maxlength="120" autocomplete="off" placeholder="pl. intro 4 ütem, capo nélkül" value="${esc(i.memo || '')}"></label>
+    </div>
+  </details>`;
+}
+
+function readInst(form) {
+  const v = (n) => form.elements[`inst-${n}`]?.value ?? '';
+  return cleanInst({ key: v('key'), tempo: v('tempo'), style: v('style'), bank: v('bank'), button: v('button'), memo: v('memo') });
+}
+
+/** Hangnem-javaslat: csak ha a mező üres és a dalban van akkord; egy koppintással elfogadható, magától nem tölti ki. */
+function bindInstFields(form) {
+  const keyIn = form.elements['inst-key'];
+  const box = form.querySelector('.key-suggest');
+  if (!keyIn || !box) return;
+  const update = () => {
+    const sug = keyIn.value.trim() ? '' : suggestKey(form.elements.lyrics.value, store.settings('app').chordNotation || 'hu');
+    box.hidden = !sug;
+    box.innerHTML = sug ? `Javaslat az akkordok alapján: <button type="button" class="btn btn-teal btn-sm" data-key="${esc(sug)}">${esc(sug)} – elfogadom</button>` : '';
+  };
+  const later = debounce(update, 250);
+  form.addEventListener('input', (e) => { if (e.target === keyIn) update(); else if (e.target.name === 'lyrics') later(); });
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-key]');
+    if (!b) return;
+    keyIn.value = b.dataset.key;
+    keyIn.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  form.instRefresh = update;
+  update();
+}
+
 /* ---------------- Szerkesztő ---------------- */
 
 export function editorView(ctx) {
@@ -279,6 +337,7 @@ export function editorView(ctx) {
           <button type="button" class="btn btn-pink btn-sm" data-act="add-tag">${icon('plus')} Címke</button>
         </div></div>
       <label class="switch-row"><input type="checkbox" name="favorite" ${song?.favorite ? 'checked' : ''}><span class="switch"></span><span>${icon('star')} Kedvenc</span></label>
+      ${instFieldsHTML(song)}
       <div class="field"><span class="field-label">Dalszöveg</span>
         <div class="ref-btn-row">
           <button type="button" class="btn btn-gold btn-sm" data-act="refrain">${icon('star')} Refrén</button>
@@ -309,6 +368,7 @@ export function editorView(ctx) {
   renderTags();
 
   form.addEventListener('input', () => { dirty = true; form.querySelector('.field-error').hidden = true; });
+  bindInstFields(form);
   picker.addEventListener('click', (e) => {
     const b = e.target.closest('[data-tag]');
     if (!b) return;
@@ -349,6 +409,7 @@ export function editorView(ctx) {
       const r = await convertChordLinesDialog(ta.value);
       if (r === null) return;
       ta.value = r;
+      form.instRefresh?.();
       dirty = true;
       toast('Átalakítva. A dal a Mentés gombbal kerül tárolásra.', 'success', 3000);
     }
@@ -376,6 +437,7 @@ export function editorView(ctx) {
       title,
       artist: form.elements.artist.value,
       lyrics: form.elements.lyrics.value,
+      inst: readInst(form),
       tagIds: [...selTags],
       favorite: form.elements.favorite.checked,
     });

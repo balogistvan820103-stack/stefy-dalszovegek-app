@@ -4,6 +4,7 @@
 import { openDB, tx, getAll } from './db.js';
 import { norm, uid, collator, todayISO } from './util.js';
 import { stripChords, normShift } from './chords.js';
+import { cleanInst, instSearchText, INST_KEYS } from './inst.js';
 
 export const DEFAULT_DB = 'stefy-dalszovegek';
 
@@ -37,6 +38,8 @@ export const DEFAULTS = Object.freeze({
     twoColumns: true,
     showChords: true,
     chordNotation: 'hu', // 'hu': H = fehér, B = fekete billentyű · 'intl': B = fehér, Bb = fekete
+    showInst: true, // hangszer-jegyzetsor a listákban és fellépés módban
+    instFields: [...INST_KEYS], // a jegyzetsorban megjelenő mezők
     listTitleSize: 19,
     songsTab: 'all',
     tagFilter: null,
@@ -119,7 +122,7 @@ function indexSong(s) {
   const tagNames = (s.tagIds || []).map((id) => state.tags.get(id)?.name || '').join(' ');
   searchIdx.set(s.id, {
     t: norm(s.title),
-    m: norm(`${s.artist || ''} ${tagNames}`),
+    m: norm(`${s.artist || ''} ${tagNames} ${instSearchText(s)}`), // a style és a bank neve is kereshető
     l: norm(stripChords(s.lyrics)), // az akkordok ([Am]) ne zavarják a keresést
   });
 }
@@ -152,6 +155,8 @@ export async function saveSong(input) {
   song.lyrics = cleanLyrics(input.lyrics);
   if (Array.isArray(input.tagIds)) song.tagIds = [...new Set(input.tagIds)].filter((id) => state.tags.has(id));
   if (typeof input.favorite === 'boolean') song.favorite = input.favorite;
+  // hangszer-jegyzet: csak ha a hívó megadja (különben a meglévő marad)
+  if (input.inst !== undefined) song.inst = cleanInst(input.inst);
   song.updatedAt = now;
   await tx(db, 'songs', 'readwrite', (s) => { s.songs.put(song); });
   state.songs.set(song.id, song);

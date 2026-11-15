@@ -634,6 +634,84 @@ await test('Akkordozás mód műveletei: hozzáadás a szó elejére, csere, ◀
   eq(deleteChord('[Am]Csengess be [E]hozzám', 0), 'Csengess be [E]hozzám', 'törlés');
 });
 
+/* ---------------- Hangszer-jegyzet ---------------- */
+
+await test('Hangszer-jegyzet: régi dal üres mezőkkel, mentés, szerkesztés után is megmarad', async () => {
+  const { instLine, cleanInst, hasInst } = await import('../js/inst.js');
+  const old = await store.saveSong({ title: 'Régi dal jegyzet nélkül', lyrics: 'szöveg' });
+  eq(store.getSong(old.id).inst, undefined, 'régi/új dal jegyzet nélkül: nincs mező');
+  eq(instLine(store.getSong(old.id)), '', 'üres jegyzetsor');
+  assert(!hasInst(old), 'nincs jegyzet');
+  const s = await store.saveSong({ title: 'Jegyzetes dal', lyrics: '[Dm]Egy [A7]kettő', inst: { key: ' Dm ', tempo: '120', style: 'Polka', bank: 'Lakodalom 2', button: '5', memo: 'intro 4 ütem', junk: 'x' } });
+  eq(store.getSong(s.id).inst, { key: 'Dm', tempo: 120, style: 'Polka', bank: 'Lakodalom 2', button: 5, memo: 'intro 4 ütem' }, 'tisztított mezők');
+  await store.saveSong({ ...store.getSong(s.id), title: 'Jegyzetes dal' });
+  await store.toggleFavorite(s.id);
+  await store.setTranspose(s.id, 0);
+  await store.reload();
+  eq(store.getSong(s.id).inst.bank, 'Lakodalom 2', 'szerkesztés / kedvenc / újraindítás után megmarad');
+  eq(cleanInst({ tempo: 'gyors', button: 11, key: '' }), {}, 'érvénytelen tempó és gomb kimarad');
+  eq(cleanInst({ tempo: 0, button: 0 }), {}, '0 nem érték');
+  eq(cleanInst(null), {}, 'hiányzó jegyzet = üres');
+  await store.deleteSong(old.id);
+});
+
+await test('Jegyzetsor: csak a kitöltött és bekapcsolt mezők; üresen nem foglal helyet', async () => {
+  const { instLine, buttonLabel } = await import('../js/inst.js');
+  const full = { inst: { style: 'Polka', bank: 'Lakodalom 2', button: 5, key: 'Dm', tempo: 120, memo: 'intro' } };
+  eq(instLine(full), 'Lakodalom 2 · 5-ös gomb · Polka · Dm · 120 BPM · intro', 'minden mező');
+  eq(instLine({ inst: { bank: 'Lakodalom 2', button: 5, key: 'Dm', tempo: 120 } }), 'Lakodalom 2 · 5-ös gomb · Dm · 120 BPM', 'csak a kitöltöttek');
+  eq(instLine(full, { fields: ['bank', 'key'] }), 'Lakodalom 2 · Dm', 'csak a Beállításokban kiválasztott mezők');
+  eq(instLine(full, { fields: [] }), '', 'minden mező kikapcsolva');
+  eq([1, 2, 3, 5, 6, 8, 10].map(buttonLabel), ['1-es gomb', '2-es gomb', '3-as gomb', '5-ös gomb', '6-os gomb', '8-as gomb', '10-es gomb'], 'gomb toldaléka');
+  const { songCardHTML } = await import('../js/components.js');
+  const box = document.createElement('div');
+  box.innerHTML = songCardHTML({ id: 'x1', title: 'A', ...full }) + songCardHTML({ id: 'x2', title: 'B' });
+  eq(box.querySelectorAll('.song-inst').length, 1, 'üres jegyzetnél nincs elem a kártyán');
+  eq(box.querySelector('.song-inst').textContent, 'Lakodalom 2 · 5-ös gomb · Polka · Dm · 120 BPM · intro', 'a kártyán a jegyzetsor');
+  assert(!box.textContent.includes('[Dm]'), 'akkord nem kerül a kártyára');
+});
+
+await test('Hangnem transzponálva (H/B jelöléssel is); a mentett hangnem nem változik; javaslat az akkordokból', async () => {
+  const { displayKey, instLine, suggestKey } = await import('../js/inst.js');
+  eq([displayKey('Dm', 2, 'hu'), displayKey('Dm', -2, 'hu'), displayKey('Dm', 0, 'hu')], ['Em', 'Cm', 'Dm'], 'moll hangnem');
+  eq([displayKey('G', 3, 'hu'), displayKey('G', 3, 'intl')], ['B', 'Bb'], 'G +3: magyar B, nemzetközi Bb (nem A#)');
+  eq([displayKey('A', 2, 'hu'), displayKey('A', 2, 'intl')], ['H', 'B'], 'A +2: magyar H, nemzetközi B');
+  eq([displayKey('H', 1, 'hu'), displayKey('B', 1, 'hu'), displayKey('B', 1, 'intl')], ['C', 'H', 'C'], 'H/B értelmezése a jelölés szerint');
+  eq([displayKey('Hm', 0, 'intl'), displayKey('Bb', 0, 'hu')], ['Bm', 'B'], 'eltolás nélkül a jelölést követi');
+  eq(displayKey('d-moll', 2, 'hu'), 'd-moll', 'nem akkordszerű hangnem változatlan');
+  eq(instLine({ transpose: 2, inst: { key: 'Dm', tempo: 120 } }, { notation: 'hu' }), 'Em (+2) · 120 BPM', 'jegyzetsorban az eltolás is látszik');
+  eq(instLine({ transpose: -1, inst: { tempo: 90 } }), 'Eltolás: −1 · 90 BPM', 'hangnem nélkül is látszik az eltolás');
+  eq(instLine({ transpose: 2, inst: { key: 'Dm' } }, { fields: ['tempo'] }), '', 'kikapcsolt hangnem mezőnél nincs');
+  const s = await store.saveSong({ title: 'Hangnem próba', lyrics: '[Dm]x', inst: { key: 'Dm' } });
+  await store.setTranspose(s.id, 2);
+  eq(store.getSong(s.id).inst.key, 'Dm', 'a mentett hangnem nem változik');
+  eq(store.getSong(s.id).lyrics, '[Dm]x', 'a szöveg sem');
+  await store.deleteSong(s.id);
+  eq([suggestKey('[Dm]Egy [A7]kettő'), suggestKey('[F]a [C]b'), suggestKey('sima szöveg'), suggestKey('[Refrén]\nszöveg')], ['Dm', 'F', '', ''], 'hangnem-javaslat');
+  eq([suggestKey('[B]x', 'hu'), suggestKey('[Bb]x', 'intl'), suggestKey('[H7]x', 'intl')], ['B', 'Bb', 'B'], 'javaslat a választott jelöléssel');
+});
+
+await test('Keresés a style és a bank nevére; mentésben benne van, régi mentés hibátlanul betöltődik', async () => {
+  const a = await store.saveSong({ title: 'Első jegyzetes', lyrics: 'x', inst: { style: 'Polka', bank: 'Lakodalom 2', button: 3 } });
+  const b = await store.saveSong({ title: 'Második jegyzetes', lyrics: 'y', inst: { style: 'Lakodalom 2', key: 'G' } });
+  const c = await store.saveSong({ title: 'Harmadik jegyzet nélkül', lyrics: 'z' });
+  const ids = (q) => store.querySongs({ query: q }).map((x) => x.song.id).filter((id) => [a.id, b.id, c.id].includes(id)).sort();
+  eq(ids('Lakodalom 2'), [a.id, b.id].sort(), 'bank- és style-névre is (ékezet nélkül is)');
+  eq(ids('lakodalom'), [a.id, b.id].sort(), 'részlet');
+  eq(ids('polka'), [a.id], 'style neve');
+  eq(store.querySongs({ query: 'polka' }).find((x) => x.song.id === a.id).match, 'meta', 'jelvény: előadó / címke / jegyzet');
+  const exp = await backup.buildExport({ includeMedia: false });
+  eq(exp.songs.find((x) => x.id === a.id).inst, { style: 'Polka', bank: 'Lakodalom 2', button: 3 }, 'a mentésben benne van');
+  const back = backup.parseBackup(JSON.stringify(exp)).data.songs;
+  eq(back.find((x) => x.id === b.id).inst, { key: 'G', style: 'Lakodalom 2' }, 'visszatöltődik');
+  const old = backup.parseBackup(JSON.stringify({ app: 'stefy-dalszovegek', format: 1, songs: [{ id: 'o1', title: 'Régi', lyrics: 'r', favorite: true }] }));
+  eq(old.data.songs[0].inst, {}, 'régi mentés: üres jegyzet');
+  eq([old.data.songs[0].title, old.data.songs[0].favorite], ['Régi', true], 'régi mentés többi adata változatlan');
+  const bad = backup.parseBackup(JSON.stringify({ songs: [{ title: 'x', lyrics: 'y', inst: 'hibás' }, { title: 'z', lyrics: 'w', inst: { tempo: 'gyors', bank: 5 } }] }));
+  eq([bad.data.songs[0].inst, bad.data.songs[1].inst], [{}, { bank: '5' }], 'hibás jegyzet nem okoz hibát');
+  for (const x of [a, b, c]) await store.deleteSong(x.id);
+});
+
 await test('Teljesítmény: 3000 dal keresése gyors', async () => {
   const words = ['szerelem', 'éjszaka', 'hajnal', 'tánc', 'nyár', 'csillag', 'tenger', 'szív', 'zene', 'álom'];
   const songs = [];

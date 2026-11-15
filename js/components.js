@@ -6,6 +6,20 @@ import { icon } from './icons.js';
 import { parseLyrics, markRefrain } from './lyrics.js';
 import { parseChordLine, isChordOnlyLine, hasChords, chordFormatter } from './chords.js';
 import { isPlayed } from './night.js';
+import { instLine } from './inst.js';
+
+/** A dal hangszer-jegyzetsora a Beállítások szerint ('' ha ki van kapcsolva vagy nincs kitöltve). */
+export function songInstLine(song, shift) {
+  const app = store.settings('app');
+  if (app.showInst === false) return '';
+  return instLine(song, { fields: Array.isArray(app.instFields) ? app.instFields : undefined, notation: app.chordNotation || 'hu', shift });
+}
+
+/** Jegyzetsor HTML a listákba (üresen nem foglal helyet). */
+export function instLineHTML(song, cls = 'song-inst') {
+  const t = songInstLine(song);
+  return t ? `<span class="${cls}">${esc(t)}</span>` : '';
+}
 
 /* ---------------- Betűtípusok (csak a készüléken lévő rendszerbetűk – offline is működik) ---------------- */
 
@@ -170,7 +184,7 @@ export function fitColumns(lyr, avail) {
 /* ---------------- Dalkártya ---------------- */
 
 export function songCardHTML(song, { draggable = false, match = null, showArtist = store.settings('app').showArtist, href, selectable = false, selected = false } = {}) {
-  const badge = match === 'lyrics' ? '<span class="match-badge">szövegben</span>' : (match === 'meta' ? '<span class="match-badge meta">előadó / címke</span>' : '');
+  const badge = match === 'lyrics' ? '<span class="match-badge">szövegben</span>' : (match === 'meta' ? '<span class="match-badge meta">előadó / címke / jegyzet</span>' : '');
   const played = isPlayed(song.id);
   return `<div class="song-card${song.favorite ? ' is-fav' : ''}${selected ? ' is-selected' : ''}${played ? ' is-played' : ''}" data-id="${esc(song.id)}" style="--accent:${esc(store.songColor(song))}"${selectable ? ` aria-selected="${selected}"` : ''}>
     ${selectable ? `<span class="sel-box" aria-hidden="true">${icon('check')}</span>` : ''}
@@ -178,6 +192,7 @@ export function songCardHTML(song, { draggable = false, match = null, showArtist
     <a class="song-link" href="${esc(href || `#/song/${encodeURIComponent(song.id)}`)}">
       <span class="song-title">${played ? `<span class="played-mark" title="Ma este már lejátszva" aria-label="lejátszva">${icon('check')}</span>` : ''}${esc(song.title)}</span>
       ${showArtist && song.artist ? `<span class="song-artist">${esc(song.artist)}</span>` : ''}
+      ${instLineHTML(song)}
       ${badge}
     </a>
     <button class="fav-btn" type="button" data-fav="${esc(song.id)}" aria-pressed="${song.favorite}" aria-label="${song.favorite ? 'Eltávolítás a kedvencekből' : 'Kedvencnek jelölés'}">${icon('star')}</button>

@@ -3,7 +3,7 @@
 import * as store from '../store.js';
 import { esc, toast, confirmBox, modal, fmtISODate, todayISO, debounce } from '../util.js';
 import { icon, tile } from '../icons.js';
-import { emptyState, quickEditSong } from '../components.js';
+import { emptyState, quickEditSong, instLineHTML } from '../components.js';
 import { makeSortable } from '../dnd.js';
 import * as night from '../night.js';
 
@@ -119,7 +119,7 @@ export function setlistView(ctx) {
           <li class="set-row${played.has(s.id) ? ' is-played' : ''}" data-id="${esc(s.id)}" style="--accent:${esc(store.songColor(s))}">
             ${locked ? '' : `<button type="button" class="grip" aria-label="Áthelyezés húzással">${icon('grip')}</button>`}
             <span class="set-num">${i + 1}</span>
-            <a class="set-title" href="#/perform/${encodeURIComponent(id)}/${Math.max(0, tonight.indexOf(s.id))}">${played.has(s.id) ? `<span class="played-mark" title="Ma este már lejátszva" aria-label="lejátszva">${icon('check')}</span>` : ''}${esc(s.title)}</a>
+            <a class="set-title" href="#/perform/${encodeURIComponent(id)}/${Math.max(0, tonight.indexOf(s.id))}">${played.has(s.id) ? `<span class="played-mark" title="Ma este már lejátszva" aria-label="lejátszva">${icon('check')}</span>` : ''}${esc(s.title)}${instLineHTML(s)}</a>
             <button type="button" class="icon-btn icon-btn-blue icon-btn-sm" data-act="edit-song" aria-label="Dalszöveg szerkesztése">${icon('edit')}</button>
             ${locked ? '' : `<button type="button" class="icon-btn icon-btn-red icon-btn-sm" data-act="remove" aria-label="Eltávolítás a listáról">${icon('x')}</button>`}
           </li>`).join('')}</ol>`
@@ -253,7 +253,7 @@ export function pickerView(ctx) {
       const on = selSet.has(s.id); const has = already.has(s.id);
       return `<button type="button" class="pick-card${on ? ' on' : ''}${has ? ' has' : ''}" data-id="${esc(s.id)}" ${has ? 'disabled' : ''} aria-pressed="${on}" style="--accent:${esc(store.songColor(s))}">
         <span class="pick-check">${has || on ? icon('check') : ''}</span>
-        <span class="song-title">${esc(s.title)}</span>${has ? '<span class="match-badge">már a listán</span>' : ''}</button>`;
+        <span class="pick-text"><span class="song-title">${esc(s.title)}</span>${instLineHTML(s)}</span>${has ? '<span class="match-badge">már a listán</span>' : ''}</button>`;
     }).join('') : emptyState('search', 'blue', 'Nincs találat', query ? 'Próbálj másik keresőszót.' : 'Ebben a nézetben nincs dal.');
     updateBar();
   };

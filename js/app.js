@@ -15,7 +15,7 @@ import * as ocr from './ocr.js';
 import { initSwipeBack } from './swipeback.js';
 import * as night from './night.js';
 
-export const APP_VERSION = '1.6.0';
+export const APP_VERSION = '1.7.0';
 
 const routes = [
   { re: /^\/(?:home)?$/, view: homeView },

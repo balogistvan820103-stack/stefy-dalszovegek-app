@@ -3,6 +3,7 @@
 import * as store from './store.js';
 import { uid, norm, todayISO } from './util.js';
 import { normShift } from './chords.js';
+import { cleanInst } from './inst.js';
 
 export class ImportError extends Error {}
 
@@ -135,6 +136,7 @@ export function parseBackup(text, { allowEmpty = false } = {}) {
       updatedAt: ts(r.updatedAt) || ts(r.createdAt) || now,
       lastOpenedAt: ts(r.lastOpenedAt),
       transpose: normShift(r.transpose), // régi mentésben nincs: 0 (eredeti hangnem)
+      inst: cleanInst(r.inst), // hangszer-jegyzet; régi mentésben nincs: üres
     });
   });
   if (skipped) warnings.push(`${skipped} hibás vagy üres dalbejegyzés kimarad.`);

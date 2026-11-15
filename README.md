@@ -54,6 +54,11 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
   koppintás egy szóra → akkordválasztó (alaphang, fajta, basszus, a dalban már használtak), ◀ ▶ betűnként, törlés,
   visszavonás. Szerkesztőben „Akkordsorok átalakítása” (akkord a sor fölött → tárolási forma) előnézettel.
   A keresést és a dalkártyákat az akkordok nem zavarják.
+- Hangszer-jegyzet dalonként (`js/inst.js`): hangnem, tempó (BPM), style / ritmus, regisztráció (bank + gomb 1–10),
+  megjegyzés – a szerkesztő lenyitható részében, mind nem kötelező (bármilyen billentyűs hangszerhez). Üres hangnemnél
+  javaslat az akkordokból (egy koppintással elfogadható). Egysoros jegyzetsor a listákban a dalcím alatt, fellépés módban
+  a szöveg fölött, és a következő dal mellett. Transzponált dalnál az eltolt hangnem és az eltolás (pl. „Em (+2)”) látszik,
+  a mentett hangnem nem változik. A style és a bank neve kereshető. Beállításokban ki/be és mezőnként választható.
 - Új dal: „Beírás / bemásolás”, „Fotózás füzetből” (Tesseract, magyar „best” csomag, teljesen a készüléken, offline),
   „Fájlból”
 - Saját háttér a dalszöveg mögött (állítható sötétítéssel) és külön saját kezdőkép

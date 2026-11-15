@@ -8,6 +8,7 @@ import { icon, tile } from '../icons.js';
 import { fontPanel, applyReaderStyle, lyricsHTML, mediaURL, processImage, pickFile } from '../components.js';
 import { txtImportFlow } from '../txtimport.js';
 import { applyListTitleSize } from './songs.js';
+import { INST_FIELDS, INST_KEYS, instLine } from '../inst.js';
 
 const SAMPLE = '[Refrén]\n[F]Mindig veled a [C]színpadon,\n[Dm]fényben, dalban, [Gm]hajnalon.\nSzól a zene, száll a szó,\nveled minden olyan jó.';
 
@@ -57,6 +58,17 @@ export function settingsView(ctx) {
         <label><input type="radio" name="notation" value="intl" ${app.chordNotation === 'intl' ? 'checked' : ''}><span><b>Nemzetközi jelölés</b><br><small class="muted">B = fehér billentyű, Bb = fekete billentyű</small></span></label>
       </div>
       <p class="muted small">${icon('info')} A dalszövegben lévő B és H betűket is e szerint érti, és a transzponált akkordokat is így írja ki. A hangnemváltás dalonként mentődik; a dal elmentett szövege nem változik.</p>
+    </section>
+
+    <section class="card set-sec">
+      <h2 class="sec-head">${tile('mic', 'orange')} Hangszer-jegyzet</h2>
+      <label class="switch-row"><input type="checkbox" data-k="showInst" ${app.showInst !== false ? 'checked' : ''}><span class="switch"></span><span>Jegyzetsor mutatása a dalcím alatt (listák, fellépés mód)</span></label>
+      <div class="inst-fields" data-inst-fields>
+        <span class="field-label">A jegyzetsorban megjelenő mezők</span>
+        ${INST_FIELDS.map(([k, label]) => `<label class="check-row"><input type="checkbox" data-inst-field="${k}" ${(Array.isArray(app.instFields) ? app.instFields : INST_KEYS).includes(k) ? 'checked' : ''}> <span>${esc(label)}</span></label>`).join('')}
+      </div>
+      <p class="inst-sample" data-inst-sample></p>
+      <p class="muted small">${icon('info')} A jegyzetet a dal szerkesztésénél, a „Hangszer-jegyzet” részben töltheted ki. Transzponált dalnál az eltolt hangnem és az eltolás (pl. „+2”) látszik – a mentett hangnem nem változik.</p>
     </section>
 
     <section class="card set-sec">
@@ -146,6 +158,7 @@ export function settingsView(ctx) {
       else if (val && st === 'active') toast('A képernyő ébren marad.', 'success');
     }
     if (k === 'showChords') paintPreview();
+    if (k === 'showInst') paintInst();
     if (k === 'performLock') toast(val ? 'Zárolás bekapcsolva.' : 'Zárolás feloldva.', 'success');
   });
 
@@ -165,6 +178,22 @@ export function settingsView(ctx) {
     paintPreview();
     toast(r.value === 'intl' ? 'Nemzetközi jelölés: B = fehér, Bb = fekete billentyű.' : 'Magyar jelölés: H = fehér, B = fekete billentyű.', 'success', 2200);
   }));
+
+  /* ---- hangszer-jegyzetsor ---- */
+  const instBox = el.querySelector('[data-inst-fields]');
+  const paintInst = () => {
+    const a = store.settings('app');
+    instBox.classList.toggle('is-off', a.showInst === false);
+    const sample = { inst: { style: 'Polka', bank: 'Lakodalom 2', button: 5, key: 'Dm', tempo: 120, memo: 'intro 4 ütem' } };
+    const t = a.showInst === false ? '' : instLine(sample, { fields: a.instFields, notation: a.chordNotation || 'hu' });
+    el.querySelector('[data-inst-sample]').innerHTML = t ? `Minta: <span class="song-inst">${esc(t)}</span>` : '<span class="muted">A jegyzetsor ki van kapcsolva.</span>';
+  };
+  instBox.addEventListener('change', async () => {
+    const fields = INST_KEYS.filter((k) => instBox.querySelector(`[data-inst-field="${k}"]`).checked);
+    await store.patchSettings('app', { instFields: fields });
+    paintInst();
+  });
+  paintInst();
 
   const ltsInput = el.querySelector('[data-lts]');
   const saveLts = debounce(() => store.saveSettings('app', store.settings('app')), 300);

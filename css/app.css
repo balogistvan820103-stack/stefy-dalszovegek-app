@@ -857,3 +857,37 @@ body.no-clock .clock, body.no-clock .pf-clock { display: none; }
 .notation-choice label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
 .notation-choice input { margin-top: 4px; width: 20px; height: 20px; accent-color: #22d3ee; }
 .notation-choice label:has(input:checked) { border-color: rgba(103, 232, 249, 0.7); background: rgba(34, 211, 238, 0.12); }
+
+/* ---------- Hangszer-jegyzet ---------- */
+:root { --inst: #fdba74; }
+/* egysoros jegyzetsor a dalcím alatt; ha nincs kitöltve, nincs elem, így nem foglal helyet */
+.song-inst { display: block; max-width: 100%; font-size: 0.82rem; font-weight: 700; line-height: 1.3; color: var(--inst); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.set-title .song-inst { margin-top: 2px; }
+.pick-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pick-card .pick-text .song-title { flex: none; }
+.pf-dl-title { min-width: 0; }
+.pf-dl-inst { display: block; font-size: 0.8rem; font-weight: 700; color: var(--inst); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf-drawer-list button.on .pf-dl-inst { color: #5a2d00; }
+.reader-inst { margin: -6px 0 14px; font-weight: 800; font-size: 1.02rem; color: var(--inst); overflow-wrap: anywhere; }
+/* fellépés mód: a szöveg fölött, jól olvashatóan */
+.pf-inst { max-width: 1200px; margin: 0 auto 10px; padding: 6px 12px; border-radius: 12px; background: rgba(253, 186, 116, 0.14); border: 1px solid rgba(253, 186, 116, 0.45); color: #ffedd5; font-weight: 800; font-size: clamp(1rem, 2.4vw, 1.35rem); line-height: 1.35; overflow-wrap: anywhere; }
+.pf-inst[hidden] { display: none; }
+.pf-next-inst { color: var(--inst); font-weight: 700; }
+.pf-next-inst::before { content: '· '; color: var(--muted); }
+/* szerkesztő */
+.inst-sec { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 4px 14px; }
+.inst-sec[open] { padding-bottom: 14px; }
+.inst-sec summary { cursor: pointer; min-height: 48px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 800; color: var(--inst); }
+.inst-sec summary small { font-weight: 500; }
+.inst-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.inst-grid .inst-wide { grid-column: 1 / -1; }
+@media (max-width: 520px) { .inst-grid { grid-template-columns: 1fr; } }
+.key-suggest { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.88rem; color: var(--teal-2); }
+.key-suggest[hidden] { display: none; }
+/* beállítások */
+.inst-fields { display: flex; flex-direction: column; gap: 4px; }
+.inst-fields.is-off { opacity: 0.45; }
+.check-row { display: flex; align-items: center; gap: 10px; min-height: 40px; font-weight: 600; }
+.check-row input { width: 20px; height: 20px; accent-color: var(--inst); }
+.inst-sample { font-size: 0.9rem; }
+.inst-sample .song-inst { display: inline; white-space: normal; }

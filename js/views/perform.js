@@ -4,7 +4,7 @@
 import * as store from '../store.js';
 import { esc, toast, clamp, debounce, confirmBox, isModalOpen } from '../util.js';
 import { icon } from '../icons.js';
-import { applyReaderStyle, lyricsHTML, mediaURL, FONT_MIN, FONT_MAX, emptyState, fitColumns, quickEditSong } from '../components.js';
+import { applyReaderStyle, lyricsHTML, mediaURL, FONT_MIN, FONT_MAX, emptyState, fitColumns, quickEditSong, songInstLine } from '../components.js';
 import * as night from '../night.js';
 import { hasChords, normShift, shiftLabel } from '../chords.js';
 
@@ -55,7 +55,7 @@ export async function performView(ctx) {
       <button type="button" class="pf-btn" data-act="tr-orig">Eredeti</button>
       <button type="button" class="pf-btn" data-act="tr-close" aria-label="Bezárás">${icon('x')}</button>
     </div>
-    <div class="pf-stage"><div class="pf-scroll"><div class="lyrics pf-lyrics"></div><div class="pf-end"></div></div></div>
+    <div class="pf-stage"><div class="pf-scroll"><div class="pf-inst" hidden></div><div class="lyrics pf-lyrics"></div><div class="pf-end"></div></div></div>
     <footer class="pf-bottom">
       <button type="button" class="pf-nav pf-prev" data-act="prev">${icon('prev')}<span>Előző</span></button>
       <button type="button" class="pf-nav pf-list" data-act="list">${icon('list')}<span>Ugrás a listára</span></button>
@@ -119,12 +119,17 @@ export async function performView(ctx) {
 
   // dalszöveg akkordokkal (ki/be kapcsolható, dalonként transzponálható); a görgetési hely megmarad
   const trBox = el.querySelector('.pf-tr');
+  const instEl = el.querySelector('.pf-inst');
+  const dlInst = (s) => { const t = songInstLine(s); return t ? `<small class="pf-dl-inst">${esc(t)}</small>` : ''; };
   const paintLyrics = (s = store.getSong(songs[idx].id) || songs[idx]) => {
     const app = store.settings('app');
     const show = app.showChords !== false;
     const has = hasChords(s.lyrics);
     const sh = normShift(s.transpose);
     lyr.innerHTML = lyricsHTML(s.lyrics, store.settings('reader').highlightSections, { chords: show, shift: sh });
+    const it = songInstLine(s, sh);
+    instEl.hidden = !it;
+    instEl.textContent = it;
     const cb = el.querySelector('.pf-chord-btn');
     cb.hidden = !has;
     cb.classList.toggle('on', show);
@@ -146,7 +151,7 @@ export async function performView(ctx) {
   };
 
   // kéthasábos nézet fekvő tableten, ha a dal egy hasábban nem fér ki
-  const refit = () => requestAnimationFrame(() => { if (lyr.isConnected) fitColumns(lyr, scroller.clientHeight - 36); });
+  const refit = () => requestAnimationFrame(() => { if (lyr.isConnected) fitColumns(lyr, scroller.clientHeight - 36 - (instEl.hidden ? 0 : instEl.offsetHeight + 10)); });
   const onResize = debounce(refit, 150);
   window.addEventListener('resize', onResize);
 
@@ -154,7 +159,12 @@ export async function performView(ctx) {
     el.querySelector('.pf-pos').textContent = `${idx + 1} / ${songs.length}`;
     const nxt = songs[idx + 1];
     const isReq = nxt && night.requestedSet(id).has(nxt.id);
-    el.querySelector('.pf-next').textContent = store.settings('app').showNext && nxt ? `Következő: ${nxt.title}${isReq ? ' (kérés)' : ''}` : (nxt ? '' : 'Utolsó dal');
+    const nextEl = el.querySelector('.pf-next');
+    if (store.settings('app').showNext && nxt) {
+      const n = store.getSong(nxt.id) || nxt;
+      const ni = songInstLine(n);
+      nextEl.innerHTML = `Következő: ${esc(n.title)}${isReq ? ' (kérés)' : ''}${ni ? ` <span class="pf-next-inst">${esc(ni)}</span>` : ''}`;
+    } else nextEl.textContent = nxt ? '' : 'Utolsó dal';
     el.querySelector('.pf-prev').disabled = idx === 0;
     el.querySelector('.pf-next-btn').disabled = idx === songs.length - 1;
   };
@@ -173,7 +183,7 @@ export async function performView(ctx) {
       if (p === idx) tags.push('<span class="req-tag now">most szól</span>');
       else if (p !== undefined) tags.push(`<span class="req-tag">a listán: ${p + 1}.</span>`);
       if (played.has(s.id)) tags.push(`<span class="req-tag played">${icon('check')} lejátszva</span>`);
-      return `<li><button type="button" data-req="${esc(s.id)}" class="${played.has(s.id) ? 'is-played' : ''}"><span class="pf-dl-title">${esc(s.title)}${s.artist ? ` <small class="muted">– ${esc(s.artist)}</small>` : ''}</span>${tags.join('')}</button></li>`;
+      return `<li><button type="button" data-req="${esc(s.id)}" class="${played.has(s.id) ? 'is-played' : ''}"><span class="pf-dl-title">${esc(s.title)}${s.artist ? ` <small class="muted">– ${esc(s.artist)}</small>` : ''}${dlInst(s)}</span>${tags.join('')}</button></li>`;
     }).join('') : '<li class="muted pad">Nincs találat.</li>';
   };
   const openReq = () => {
@@ -237,7 +247,7 @@ export async function performView(ctx) {
   const openList = () => {
     const played = night.playedSet();
     const requested = night.requestedSet(id);
-    el.querySelector('.pf-drawer-list').innerHTML = songs.map((s, i) => `<li><button type="button" data-jump="${i}" class="${i === idx ? 'on' : ''}${played.has(s.id) ? ' is-played' : ''}"><span class="set-num">${i + 1}</span><span class="pf-dl-title">${esc(s.title)}</span>${requested.has(s.id) ? '<span class="req-tag">kérés</span>' : ''}${played.has(s.id) ? `<span class="played-mark" title="lejátszva">${icon('check')}</span>` : ''}</button></li>`).join('');
+    el.querySelector('.pf-drawer-list').innerHTML = songs.map((s, i) => `<li><button type="button" data-jump="${i}" class="${i === idx ? 'on' : ''}${played.has(s.id) ? ' is-played' : ''}"><span class="set-num">${i + 1}</span><span class="pf-dl-title">${esc(s.title)}${dlInst(s)}</span>${requested.has(s.id) ? '<span class="req-tag">kérés</span>' : ''}${played.has(s.id) ? `<span class="played-mark" title="lejátszva">${icon('check')}</span>` : ''}</button></li>`).join('');
     el.querySelector('[data-act=reset-order]').hidden = !night.hasTonightOrder(id);
     const n = songs.filter((s) => played.has(s.id)).length;
     el.querySelector('[data-played-count]').textContent = `${n} / ${songs.length} lejátszva ma este`;
