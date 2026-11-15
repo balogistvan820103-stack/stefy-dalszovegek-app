@@ -2,7 +2,7 @@
 // billentyűzettel és Bluetooth lapozópedállal (nyilak / PageUp / PageDown).
 
 import * as store from '../store.js';
-import { esc, toast, clamp, debounce, confirmBox, isModalOpen } from '../util.js';
+import { esc, toast, clamp, debounce, confirmBox, isModalOpen, fullscreenSupported, fullscreenElement, enterFullscreen, exitFullscreen } from '../util.js';
 import { icon } from '../icons.js';
 import { applyReaderStyle, lyricsHTML, mediaURL, FONT_MIN, FONT_MAX, emptyState, fitColumns, quickEditSong, songInstLine } from '../components.js';
 import * as night from '../night.js';
@@ -45,7 +45,7 @@ export async function performView(ctx) {
         <button type="button" class="pf-btn pf-edit-btn" data-act="edit-song" aria-label="Dalszöveg szerkesztése">${icon('edit')}</button>
         <button type="button" class="pf-btn pf-played-btn" data-act="played" aria-label="Lejátszottnak jelölés" aria-pressed="false">${icon('check')}</button>
         <button type="button" class="pf-btn pf-lock" data-act="lock" aria-label="Zárolás"></button>
-        <button type="button" class="pf-btn" data-act="fullscreen" aria-label="Teljes képernyő">${icon('fullscreen')}</button>
+        <button type="button" class="pf-btn" data-act="fullscreen" aria-label="Teljes képernyő" ${fullscreenSupported() ? '' : 'hidden'}>${icon('fullscreen')}</button>
       </div>
     </header>
     <div class="pf-tr" hidden role="group" aria-label="Hangnemváltás">
@@ -256,7 +256,7 @@ export async function performView(ctx) {
   };
 
   const exit = async () => {
-    if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch { /* */ } }
+    await exitFullscreen();
     ctx.go(`#/setlist/${encodeURIComponent(id)}`, { replace: true });
   };
 
@@ -336,10 +336,8 @@ export async function performView(ctx) {
         break;
       }
       case 'fullscreen':
-        try {
-          if (document.fullscreenElement) await document.exitFullscreen();
-          else await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-        } catch { toast('A teljes képernyő ezen az eszközön nem érhető el.', 'error'); }
+        if (fullscreenElement()) await exitFullscreen();
+        else if (!(await enterFullscreen())) toast('A teljes képernyő ezen az eszközön nem érhető el. Tipp: a főképernyőre tett alkalmazás eleve teljes képernyőn fut.', 'info', 4000);
         break;
       case 'lock': {
         const locked = store.settings('app').performLock;
@@ -411,7 +409,7 @@ export async function performView(ctx) {
       clearInterval(playTimer);
       window.removeEventListener('resize', onResize);
       saveSize.flush();
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      exitFullscreen();
     },
   };
 }

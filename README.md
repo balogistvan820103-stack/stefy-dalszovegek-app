@@ -74,6 +74,11 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
   Beállítások → Névjegy → „Üdvözlő újra megnyitása” (a meglévő adatokhoz nem nyúl).
 - Semleges kezdőkép új felhasználóknak. A meglévő felhasználók kezdőképét (pl. STEFY-BAND) az 1.8.0 első
   indításakor elmenti (`store.js` – `migrate`), így az nem változik.
+- iPhone / iPad (Safari) és Windows (Chrome, Edge): végigjátszó teszttel ellenőrizve (Playwright, WebKit és Chromium,
+  telefon-, tablet- és laptopméretben). Teljes képernyő: Safari-előtaggal is; iPhone-on (ahol nincs) a gomb rejtve.
+  Képernyő ébren tartása: ahol nem támogatott (pl. iOS 16.4 előtt), érthető üzenet. Háttérképek ArrayBuffer-ként
+  tárolódnak (egyes WebKit-változatok Blob-ot nem tudnak IndexedDB-be menteni; a régi Blob-os képek is olvashatók).
+  iPhone/iPad Safariban, telepítés nélkül egyszeri tipp: „Megosztás → Főképernyőhöz adás” (`js/iostip.js`).
 - Új dal: „Beírás / bemásolás”, „Fotózás füzetből” (Tesseract, magyar „best” csomag, teljesen a készüléken, offline),
   „Fájlból”
 - Saját háttér a dalszöveg mögött (állítható sötétítéssel) és külön saját kezdőkép

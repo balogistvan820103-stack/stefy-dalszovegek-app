@@ -554,20 +554,35 @@ export async function patchSettings(section, patch) {
 
 /* ---------------- Média (háttérképek) ---------------- */
 
+// A képeket ArrayBuffer-ként tároljuk: egyes Safari/WebKit-változatok (pl. régebbi iOS privát módban)
+// nem tudnak Blob-ot IndexedDB-be menteni („BlobURLs are not yet supported”). A korábban Blob-ként
+// elmentett képek ugyanúgy olvashatók maradnak – a régi rekordokhoz nem nyúlunk.
+async function toStorable(rec) {
+  if (!rec?.blob) return rec;
+  const { blob, ...rest } = rec;
+  return { ...rest, data: await blob.arrayBuffer(), type: rec.type || blob.type || 'image/jpeg', size: rec.size ?? blob.size };
+}
+function fromStored(rec) {
+  if (!rec) return null;
+  if (rec.blob) return rec; // régi formátum (Blob)
+  if (rec.data) return { ...rec, blob: new Blob([rec.data], { type: rec.type || 'image/jpeg' }) };
+  return rec;
+}
+
 export async function getMedia(key) {
   const rec = await new Promise((resolve, reject) => {
     const r = db.transaction('media', 'readonly').objectStore('media').get(key);
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
   });
-  return rec || null;
+  return fromStored(rec);
 }
 
 export async function setMedia(key, blob) {
-  const rec = { key, blob, type: blob.type, size: blob.size, updatedAt: Date.now() };
+  const rec = await toStorable({ key, blob, type: blob.type, size: blob.size, updatedAt: Date.now() });
   await tx(db, 'media', 'readwrite', (s) => { s.media.put(rec); });
   emit('media:' + key);
-  return rec;
+  return fromStored(rec);
 }
 
 export async function deleteMedia(key) {
@@ -575,7 +590,7 @@ export async function deleteMedia(key) {
   emit('media:' + key);
 }
 
-export async function allMedia() { return getAll(db, 'media'); }
+export async function allMedia() { return (await getAll(db, 'media')).map(fromStored); }
 
 /* ---------------- Export / import alapjai ---------------- */
 
@@ -598,6 +613,9 @@ export function exportData() {
  * semmi sem változik a meglévő adatokon.
  */
 export async function commitImport(plan) {
+  // a képek átalakítása a tranzakció ELŐTT (a tranzakción belül nem lehet várakozni)
+  const media = plan.media ? await Promise.all(plan.media.map(toStorable)) : null;
+  plan = { ...plan, media };
   await tx(db, ['songs', 'tags', 'setlists', 'settings', 'media'], 'readwrite', (s) => {
     if (plan.clearFirst) {
       s.songs.clear();

@@ -4,7 +4,7 @@
 // Egyedi előtag: ugyanazon a github.io címen futhat a régi STEFY-BAND alkalmazás is
 // (az ő gyorsítótára „stefy-dalszovegek-v…” nevű) – azt soha nem töröljük.
 const PREFIX = 'stefy-dalszovegek-app-';
-const CACHE = `${PREFIX}v1.8.0`;
+const CACHE = `${PREFIX}v1.8.1`;
 // A szövegfelismerő (kb. 17 MB) külön tárolóban van, hogy alkalmazásfrissítéskor ne kelljen újra letölteni.
 // Csak akkor kell átnevezni, ha a vendor/tesseract mappa tartalma változik.
 const OCR_CACHE = `${PREFIX}ocr-tesseract-5.1.1-hun-best`;
@@ -30,6 +30,7 @@ const ASSETS = [
   './js/chordedit.js',
   './js/inst.js',
   './js/welcome.js',
+  './js/iostip.js',
   './js/swipeback.js',
   './js/night.js',
   './js/views/scan.js',

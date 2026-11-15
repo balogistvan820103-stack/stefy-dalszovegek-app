@@ -12,7 +12,12 @@ export const supported = typeof navigator !== 'undefined' && 'wakeLock' in navig
 
 export function unsupportedReason() {
   if (!window.isSecureContext) return 'Az oldal nem biztonságos (https vagy localhost) kapcsolaton fut, ezért a böngésző nem engedi a képernyő ébren tartását.';
-  if (!('wakeLock' in navigator)) return 'Ez a böngésző nem támogatja a képernyő ébren tartását. Frissítsd a Chrome-ot, vagy állítsd hosszabbra a képernyő-kikapcsolási időt az Android beállításaiban.';
+  if (!('wakeLock' in navigator)) {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    return ios
+      ? 'Ez az iOS-verzió még nem tudja ébren tartani a képernyőt (iOS 16.4-től támogatott). Addig állítsd hosszabbra: Beállítások → Kijelző és fényerő → Automatikus zárolás.'
+      : 'Ez a böngésző nem támogatja a képernyő ébren tartását. Frissítsd a böngészőt, vagy állítsd hosszabbra a képernyő kikapcsolási idejét a készülék beállításaiban.';
+  }
   return '';
 }
 

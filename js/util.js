@@ -205,3 +205,41 @@ export async function promptBox(title, { label = '', value = '', placeholder = '
 export function vibrate(ms = 12) {
   try { navigator.vibrate?.(ms); } catch { /* nem támogatott */ }
 }
+
+/* ---------------- Teljes képernyő (Safari: webkit-előtaggal; iPhone-on nem érhető el) ---------------- */
+
+const docEl = () => document.documentElement;
+/** Elérhető-e a teljes képernyő ezen az eszközön (iPhone Safariban nem). */
+export function fullscreenSupported() {
+  return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled
+    || docEl().requestFullscreen || docEl().webkitRequestFullscreen) && !isIPhone();
+}
+export function fullscreenElement() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+/** Teljes képernyő be. Ha nem sikerül, nem dob hibát – false-t ad vissza. */
+export async function enterFullscreen() {
+  const el = docEl();
+  try {
+    if (el.requestFullscreen) { await el.requestFullscreen({ navigationUI: 'hide' }); return true; }
+    if (el.webkitRequestFullscreen) { el.webkitRequestFullscreen(); return true; }
+  } catch { /* a böngésző elutasította */ }
+  return false;
+}
+export async function exitFullscreen() {
+  if (!fullscreenElement()) return;
+  try {
+    if (document.exitFullscreen) await document.exitFullscreen();
+    else document.webkitExitFullscreen?.();
+  } catch { /* */ }
+}
+
+/* ---------------- Apple-eszközök ---------------- */
+
+export function isIPhone() { return /iPhone|iPod/.test(navigator.userAgent); }
+/** iPhone vagy iPad (az újabb iPadek asztali Mac-ként jelentkeznek, de érintőképernyősek). */
+export function isIOS() {
+  return isIPhone() || /iPad/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+/** Főképernyőről (telepített alkalmazásként) fut-e. */
+export function isStandalone() {
+  return navigator.standalone === true || (window.matchMedia?.('(display-mode: standalone)').matches ?? false);
+}

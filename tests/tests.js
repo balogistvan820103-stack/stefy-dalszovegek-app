@@ -146,6 +146,32 @@ await test('Háttérképek külön kulccsal tárolódnak', async () => {
   await store.setMedia('bg-reader', new Blob(['olvaso2'], { type: 'image/jpeg' }));
   eq(await (await store.getMedia('bg-home')).blob.text(), 'kezdo', 'a kezdőkép nem változik az olvasó hátterének cseréjekor');
   eq(await (await store.getMedia('bg-reader')).blob.text(), 'olvaso2', 'olvasó háttér cserélődött');
+  eq((await store.allMedia()).length, 2, 'mindkét kép listázható');
+});
+
+await test('Háttérkép: a régi (Blob) formában mentett kép is betöltődik; az új forma minden böngészőben menthető', async () => {
+  const raw = await new Promise((resolve, reject) => {
+    const r = store.getDB().transaction('media', 'readonly').objectStore('media').get('bg-home');
+    r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+  });
+  assert(raw.data instanceof ArrayBuffer && !raw.blob, 'az új kép ArrayBuffer-ként tárolódik (Safari-barát)');
+  let legacyOk = null;
+  try {
+    await new Promise((resolve, reject) => {
+      const t = store.getDB().transaction('media', 'readwrite');
+      t.objectStore('media').put({ key: 'bg-regi-proba', blob: new Blob(['regi'], { type: 'image/png' }), type: 'image/png', size: 4, updatedAt: 1 });
+      t.oncomplete = resolve; t.onerror = () => reject(t.error); t.onabort = () => reject(t.error);
+    });
+    legacyOk = true;
+  } catch { legacyOk = false; /* ez a böngésző Blob-ot nem is tud menteni – itt régi formátumú kép sem lehet */ }
+  if (legacyOk) {
+    const m = await store.getMedia('bg-regi-proba');
+    eq([await m.blob.text(), m.blob.type], ['regi', 'image/png'], 'régi Blob-os kép olvasható');
+    await store.deleteMedia('bg-regi-proba');
+  }
+  const li = document.createElement('li');
+  li.textContent = `ℹ régi (Blob) formátum ebben a böngészőben: ${legacyOk ? 'menthető és olvasható' : 'nem menthető (ezért kell az új forma)'}`;
+  out.appendChild(li);
 });
 
 let exported;
@@ -779,7 +805,7 @@ await test('(b) Meglévő felhasználó (dalok + beállítások, kezdőkép-szer
     eq([h.title.text, h.title.color, h.title.size, h.subtitle.text, h.slogan.text, h.overlay], ['Saját cím', '#ffffff', 60, 'DALSZÖVEG', 'Mindig veled a színpadon.', 0.5], 'saját + régi alapértékek');
   });
   // csak háttérkép van
-  await withDB((s) => { s.media.put({ key: 'bg-home', blob: new Blob(['x'], { type: 'image/jpeg' }), type: 'image/jpeg', size: 1, updatedAt: 1 }); }, async () => {
+  await withDB((s) => { s.media.put({ key: 'bg-home', data: new Uint8Array([120]).buffer, type: 'image/jpeg', size: 1, updatedAt: 1 }); }, async () => {
     assert(!welcome.shouldShowWelcome(), 'saját háttérképnél sincs üdvözlő');
     eq(store.settings('home').title.text, 'STEFY-BAND', 'kezdőkép megőrizve');
   });

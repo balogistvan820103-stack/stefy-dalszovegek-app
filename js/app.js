@@ -15,8 +15,9 @@ import * as ocr from './ocr.js';
 import { initSwipeBack } from './swipeback.js';
 import * as night from './night.js';
 import { shouldShowWelcome, openWelcome } from './welcome.js';
+import { showIosTip } from './iostip.js';
 
-export const APP_VERSION = '1.8.0';
+export const APP_VERSION = '1.8.1';
 
 const routes = [
   { re: /^\/(?:home)?$/, view: homeView },
@@ -271,6 +272,8 @@ async function start() {
     if (r.sampleId) go(`#/song/${encodeURIComponent(r.sampleId)}`);
     else route(true); // a kezdőkép az új névvel
   }
+  // iPhone / iPad Safariban, telepítés nélkül: egyszeri tipp a főképernyőre tételhez
+  showIosTip();
   // a szövegfelismerő fájljainak csendes letöltése az offline tárolóba (egyszer, ha van internet)
   setTimeout(async () => {
     try {

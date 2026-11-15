@@ -1,7 +1,7 @@
 // Fellépés-listák: áttekintés, egy lista szerkesztése (húzásos sorrend), többdalos kijelölő.
 
 import * as store from '../store.js';
-import { esc, toast, confirmBox, modal, fmtISODate, todayISO, debounce } from '../util.js';
+import { esc, toast, confirmBox, modal, fmtISODate, todayISO, debounce, fullscreenSupported, enterFullscreen } from '../util.js';
 import { icon, tile } from '../icons.js';
 import { emptyState, quickEditSong, instLineHTML } from '../components.js';
 import { makeSortable } from '../dnd.js';
@@ -147,7 +147,7 @@ export function setlistView(ctx) {
     const locked = store.settings('app').performLock;
     if (act === 'add' && locked) { e.preventDefault(); toast('Zárolt módban nem lehet dalt hozzáadni.', 'error'); return; }
     if (act === 'perform') {
-      try { await document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }); } catch { /* nem kötelező */ }
+      if (fullscreenSupported()) await enterFullscreen(); // nem kötelező; ahol nem megy, csendben kimarad
       ctx.go(`#/perform/${encodeURIComponent(id)}/0`);
     }
     if (act === 'edit') {
