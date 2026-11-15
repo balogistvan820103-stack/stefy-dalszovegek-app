@@ -6,6 +6,7 @@ import { esc, toast, clamp, debounce, confirmBox, isModalOpen } from '../util.js
 import { icon } from '../icons.js';
 import { applyReaderStyle, lyricsHTML, mediaURL, FONT_MIN, FONT_MAX, emptyState, fitColumns, quickEditSong } from '../components.js';
 import * as night from '../night.js';
+import { hasChords, normShift, shiftLabel } from '../chords.js';
 
 export async function performView(ctx) {
   const id = ctx.params[0];
@@ -39,12 +40,21 @@ export async function performView(ctx) {
         <button type="button" class="pf-btn pf-req-btn" data-act="request" aria-label="Vendégkérés: dal keresése">${icon('search')}</button>
         <button type="button" class="pf-btn" data-act="smaller" aria-label="Kisebb betű">A<sup>−</sup></button>
         <button type="button" class="pf-btn" data-act="bigger" aria-label="Nagyobb betű">A<sup>+</sup></button>
+        <button type="button" class="pf-btn pf-chord-btn" data-act="chords" aria-label="Akkordok ki/be" aria-pressed="true" hidden>Akk</button>
+        <button type="button" class="pf-btn pf-tr-btn" data-act="transpose" aria-label="Hangnemváltás" hidden>♯♭</button>
         <button type="button" class="pf-btn pf-edit-btn" data-act="edit-song" aria-label="Dalszöveg szerkesztése">${icon('edit')}</button>
         <button type="button" class="pf-btn pf-played-btn" data-act="played" aria-label="Lejátszottnak jelölés" aria-pressed="false">${icon('check')}</button>
         <button type="button" class="pf-btn pf-lock" data-act="lock" aria-label="Zárolás"></button>
         <button type="button" class="pf-btn" data-act="fullscreen" aria-label="Teljes képernyő">${icon('fullscreen')}</button>
       </div>
     </header>
+    <div class="pf-tr" hidden role="group" aria-label="Hangnemváltás">
+      <button type="button" class="pf-btn" data-act="tr-down" aria-label="Fél hanggal lejjebb">−1</button>
+      <span class="tr-shift"></span>
+      <button type="button" class="pf-btn" data-act="tr-up" aria-label="Fél hanggal feljebb">+1</button>
+      <button type="button" class="pf-btn" data-act="tr-orig">Eredeti</button>
+      <button type="button" class="pf-btn" data-act="tr-close" aria-label="Bezárás">${icon('x')}</button>
+    </div>
     <div class="pf-stage"><div class="pf-scroll"><div class="lyrics pf-lyrics"></div><div class="pf-end"></div></div></div>
     <footer class="pf-bottom">
       <button type="button" class="pf-nav pf-prev" data-act="prev">${icon('prev')}<span>Előző</span></button>
@@ -91,9 +101,8 @@ export async function performView(ctx) {
     applyReaderStyle(el, r);
     el.querySelector('.pf-title').textContent = s.title;
     paintMeta();
-    lyr.innerHTML = lyricsHTML(s.lyrics, r.highlightSections);
+    paintLyrics(s);
     scroller.scrollTop = 0;
-    refit();
     paintPlayed();
     onSong = 0;
     const fav = el.querySelector('.pf-fav');
@@ -106,6 +115,34 @@ export async function performView(ctx) {
     }
     ctx.silentReplace(`#/perform/${encodeURIComponent(id)}/${idx}`);
     store.markOpened(s.id);
+  };
+
+  // dalszöveg akkordokkal (ki/be kapcsolható, dalonként transzponálható); a görgetési hely megmarad
+  const trBox = el.querySelector('.pf-tr');
+  const paintLyrics = (s = store.getSong(songs[idx].id) || songs[idx]) => {
+    const app = store.settings('app');
+    const show = app.showChords !== false;
+    const has = hasChords(s.lyrics);
+    const sh = normShift(s.transpose);
+    lyr.innerHTML = lyricsHTML(s.lyrics, store.settings('reader').highlightSections, { chords: show, shift: sh });
+    const cb = el.querySelector('.pf-chord-btn');
+    cb.hidden = !has;
+    cb.classList.toggle('on', show);
+    cb.setAttribute('aria-pressed', String(show));
+    cb.setAttribute('aria-label', show ? 'Akkordok kikapcsolása' : 'Akkordok bekapcsolása');
+    const tb = el.querySelector('.pf-tr-btn');
+    tb.hidden = !has || !show;
+    tb.textContent = sh ? shiftLabel(sh) : '♯♭';
+    if (tb.hidden) trBox.hidden = true;
+    trBox.querySelector('.tr-shift').textContent = shiftLabel(sh);
+    trBox.querySelector('[data-act=tr-orig]').disabled = !sh;
+    refit();
+  };
+  const transpose = async (d) => {
+    const s = store.getSong(songs[idx].id);
+    if (!s) return;
+    await store.setTranspose(s.id, d === 0 ? 0 : normShift((s.transpose || 0) + d));
+    paintLyrics();
   };
 
   // kéthasábos nézet fekvő tableten, ha a dal egy hasábban nem fér ki
@@ -243,6 +280,16 @@ export async function performView(ctx) {
         break;
       }
       case 'close-req': closeReq(); break;
+      case 'chords':
+        await store.patchSettings('app', { showChords: store.settings('app').showChords === false });
+        paintLyrics();
+        toast(store.settings('app').showChords !== false ? 'Akkordok bekapcsolva.' : 'Akkordok kikapcsolva.', 'info', 900);
+        break;
+      case 'transpose': trBox.hidden = !trBox.hidden; break;
+      case 'tr-close': trBox.hidden = true; break;
+      case 'tr-up': transpose(1); break;
+      case 'tr-down': transpose(-1); break;
+      case 'tr-orig': transpose(0); break;
       case 'reset-order': {
         if (!(await confirmBox('Mentett sorrend vissza', 'Visszaállítod a lista mentett sorrendjét? A ma esti vendégkérések kikerülnek a sorrendből (a dalok megmaradnak).', { okLabel: 'Visszaállítás' }))) return;
         const cur = songs[idx]?.id;

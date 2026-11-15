@@ -3,6 +3,7 @@
 
 import { openDB, tx, getAll } from './db.js';
 import { norm, uid, collator, todayISO } from './util.js';
+import { stripChords, normShift } from './chords.js';
 
 export const DEFAULT_DB = 'stefy-dalszovegek';
 
@@ -34,6 +35,8 @@ export const DEFAULTS = Object.freeze({
     swipeBack: true,
     showClock: true,
     twoColumns: true,
+    showChords: true,
+    chordNotation: 'hu', // 'hu': H = fehér, B = fekete billentyű · 'intl': B = fehér, Bb = fekete
     listTitleSize: 19,
     songsTab: 'all',
     tagFilter: null,
@@ -117,7 +120,7 @@ function indexSong(s) {
   searchIdx.set(s.id, {
     t: norm(s.title),
     m: norm(`${s.artist || ''} ${tagNames}`),
-    l: norm(s.lyrics),
+    l: norm(stripChords(s.lyrics)), // az akkordok ([Am]) ne zavarják a keresést
   });
 }
 
@@ -206,6 +209,20 @@ export async function bulkDeleteSongs(ids) {
   state.recent = recent;
   emit('songs');
   return del.size;
+}
+
+/**
+ * Transzponálás dalonként (félhangban, -11 … +11). Csak a megjelenítést befolyásolja:
+ * a dal elmentett szövege nem változik. Az időbélyeg sem változik (ez nem szövegmódosítás).
+ */
+export async function setTranspose(id, value) {
+  const s = state.songs.get(id);
+  if (!s) return null;
+  const song = { ...s, transpose: normShift(value) };
+  await tx(db, 'songs', 'readwrite', (st) => { st.songs.put(song); });
+  state.songs.set(id, song);
+  emit('songs');
+  return song;
 }
 
 export async function toggleFavorite(id, value) {

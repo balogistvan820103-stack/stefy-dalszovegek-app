@@ -2,6 +2,7 @@
 
 import * as store from './store.js';
 import { uid, norm, todayISO } from './util.js';
+import { normShift } from './chords.js';
 
 export class ImportError extends Error {}
 
@@ -133,6 +134,7 @@ export function parseBackup(text, { allowEmpty = false } = {}) {
       createdAt: ts(r.createdAt) || now,
       updatedAt: ts(r.updatedAt) || ts(r.createdAt) || now,
       lastOpenedAt: ts(r.lastOpenedAt),
+      transpose: normShift(r.transpose), // régi mentésben nincs: 0 (eredeti hangnem)
     });
   });
   if (skipped) warnings.push(`${skipped} hibás vagy üres dalbejegyzés kimarad.`);

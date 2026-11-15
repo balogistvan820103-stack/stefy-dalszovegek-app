@@ -2,6 +2,8 @@
 // Tiszta függvények (nincs DOM) – a tesztek közvetlenül ezeket hívják.
 // A dal elmentett szövegét SOSEM módosítja, csak a megjelenítést vezérli.
 
+import { isChord, isChordOnlyLine } from './chords.js';
+
 const WORD = '(?:refr[ée]n|refr|ref)';
 // ismétlésjel: 2x, (2x), x2, 2×, ism., bis
 const REP = '\\(?\\s*(?:\\d\\s*[x×]|[x×]\\s*\\d|ism\\.?|bis)\\s*\\)?';
@@ -56,24 +58,27 @@ export function refrainMarker(line) {
  *   ref-label  – refrénjel külön sorban (címkeként jelenik meg)
  *   ref-line   – a refrén egy sora (mark: a sor elején álló jel, ha volt)
  *   line       – sima sor
- * A refrén a jeltől a következő üres sorig vagy a következő jelig/címkéig tart.
+ *   chords     – csak akkordokból álló sor, pl. "[Am] [Dm] [E]" (refrénen belül ref: true)
+ * A valódi akkord ([Am], [F#m7], [Hm]) nem címke. A refrén a jeltől a következő üres sorig
+ * vagy a következő jelig/címkéig tart. Minden elem i mezője az eredeti sor sorszáma (0-tól).
  */
 export function parseLyrics(text) {
   const out = [];
   let inRef = false;
-  for (const raw of String(text ?? '').split('\n')) {
+  String(text ?? '').split('\n').forEach((raw, i) => {
     const t = raw.trim();
-    if (!t) { inRef = false; out.push({ kind: 'gap', text: '' }); continue; }
+    if (!t) { inRef = false; out.push({ kind: 'gap', text: '', i }); return; }
+    if (isChordOnlyLine(raw)) { out.push(inRef ? { kind: 'chords', text: raw, ref: true, i } : { kind: 'chords', text: raw, i }); return; }
     const r = refrainMarker(raw);
     if (r) {
       inRef = true;
-      if (r.rest) out.push({ kind: 'ref-line', text: r.rest, mark: r.mark, ref: true });
-      else out.push({ kind: 'ref-label', text: r.label, ref: true });
-      continue;
+      if (r.rest) out.push({ kind: 'ref-line', text: r.rest, mark: r.mark, ref: true, i });
+      else out.push({ kind: 'ref-label', text: r.label, ref: true, i });
+      return;
     }
-    if (RE.section.test(t)) { inRef = false; out.push({ kind: 'section', text: t.slice(1, -1).trim() }); continue; }
-    out.push(inRef ? { kind: 'ref-line', text: raw, ref: true } : { kind: 'line', text: raw });
-  }
+    if (RE.section.test(t) && !isChord(t.slice(1, -1))) { inRef = false; out.push({ kind: 'section', text: t.slice(1, -1).trim(), i }); return; }
+    out.push(inRef ? { kind: 'ref-line', text: raw, ref: true, i } : { kind: 'line', text: raw, i });
+  });
   return out;
 }
 

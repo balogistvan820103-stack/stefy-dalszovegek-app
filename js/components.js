@@ -4,6 +4,7 @@ import * as store from './store.js';
 import { esc, debounce, clamp, modal, toast, confirmBox } from './util.js';
 import { icon } from './icons.js';
 import { parseLyrics, markRefrain } from './lyrics.js';
+import { parseChordLine, isChordOnlyLine, hasChords, chordFormatter } from './chords.js';
 import { isPlayed } from './night.js';
 
 /* ---------------- Betűtípusok (csak a készüléken lévő rendszerbetűk – offline is működik) ---------------- */
@@ -41,38 +42,109 @@ export const REF_COLORS = ['#fbbf24', '#2dd4bf', '#60a5fa', '#c084fc', '#f472b6'
 
 /* ---------------- Dalszöveg HTML ---------------- */
 
+/* ---------------- Akkordok a szöveg fölött ---------------- */
+
+/**
+ * Egy sor(részlet) HTML-je akkordokkal. Az akkord a szó (vagy szótag) kezdete fölé kerül:
+ * a szó egy nem törhető egység, benne az akkordos darab egy kis „oszlop” (fent akkord, lent szöveg),
+ * így az akkordok sosem fedik egymást, és tördeléskor is a saját szavuk fölött maradnak.
+ *  ch.show  – akkordok látszanak-e (ha nem, csak a szöveg marad, zárójelek nélkül)
+ *  ch.fmt   – akkordnév → kiírt név (transzponálás, H/B)
+ *  ch.tap   – Akkordozás mód: minden szó koppintható (data-l: sor, data-s: hely a sorban)
+ *  li, off, cOff – a sor sorszáma, és a részlet kezdete a teljes sorban (szöveg- és akkordindex)
+ */
+function chordSegHTML(raw, ch, li = 0, off = 0, cOff = 0) {
+  const { text, chords } = parseChordLine(raw);
+  if (!ch.tap && (!chords.length || !ch.show)) return esc(text);
+  const words = [...text.matchAll(/\S+/g)].map((m) => ({ s: m.index, e: m.index + m[0].length }));
+  // akkordok a megjelenítési helyük szerint (szóköz elé írt akkord a következő szó elejére kerül)
+  const at = new Map();
+  chords.forEach((c, k) => {
+    let p = c.pos;
+    if (p < text.length && /\s/.test(text[p])) { const w = words.find((x) => x.s > p); p = w ? w.s : text.length; }
+    if (!at.has(p)) at.set(p, []);
+    at.get(p).push({ name: c.name, ci: cOff + k });
+  });
+  const names = (list) => list.map((c) => `<span class="cn"${ch.tap ? ` data-l="${li}" data-ci="${c.ci}"` : ''}>${esc(ch.fmt(c.name))}</span>`).join(' ');
+  const col = (list, chunk) => `<span class="ch-w"><span class="ch">${names(list)}</span>${chunk ? esc(chunk) : '&nbsp;'}</span>`;
+  let html = ''; let cur = 0;
+  for (const w of words) {
+    html += esc(text.slice(cur, w.s));
+    const bps = [...at.keys()].filter((p) => p >= w.s && p < w.e).sort((a, b) => a - b);
+    const attrs = ch.tap ? ` data-l="${li}" data-s="${off + w.s}"` : '';
+    if (!bps.length) html += ch.tap ? `<span class="ch-word"${attrs}>${esc(text.slice(w.s, w.e))}</span>` : esc(text.slice(w.s, w.e));
+    else {
+      let inner = esc(text.slice(w.s, bps[0]));
+      bps.forEach((p, j) => { inner += col(at.get(p), text.slice(p, bps[j + 1] ?? w.e)); });
+      html += `<span class="ch-word"${attrs}>${inner}</span>`;
+    }
+    cur = w.e;
+  }
+  html += esc(text.slice(cur));
+  // a sor végén álló akkord (utána nincs szöveg)
+  const end = at.get(text.length);
+  if (end) html += `<span class="ch-word">${col(end, '')}</span>`;
+  return html;
+}
+
+/** Csak akkordokból álló sor, pl. "[Am] [Dm] [E]". */
+function chordRowHTML(raw, ch, li = 0) {
+  const { chords } = parseChordLine(raw);
+  return chords.map((c, k) => `<span class="ch-solo"><span class="cn"${ch.tap ? ` data-l="${li}" data-ci="${k}"` : ''}>${esc(ch.fmt(c.name))}</span></span>`).join(' ');
+}
+
 /**
  * Megjelenítés soronként. highlight = a „[Refrén] jellegű sorok színes kiemelése” kapcsoló:
- * kikapcsolva minden sor pontosan úgy jelenik meg, ahogy be van írva.
+ * kikapcsolva minden sor pontosan úgy jelenik meg, ahogy be van írva (az akkordok zárójele nélkül).
+ * opt: { chords: akkordok látszanak (alapból igen), shift: transzponálás félhangban,
+ *        notation: 'hu' | 'intl', tap: Akkordozás mód (koppintható szavak) }
  */
-export function lyricsHTML(text, highlight = true) {
+export function lyricsHTML(text, highlight = true, opt = {}) {
   if (!text) return '<span class="lyr-empty">Ehhez a dalhoz még nincs dalszöveg. Koppints a szerkesztés gombra a hozzáadáshoz.</span>';
-  const line = (inner) => `<div class="lyr-l">${inner || '<br>'}</div>`;
+  const ch = {
+    show: opt.chords !== false || !!opt.tap,
+    tap: !!opt.tap,
+    fmt: chordFormatter(text, opt.tap ? 0 : opt.shift, opt.notation || store.settings('app').chordNotation),
+  };
+  const line = (inner, cls = '') => `<div class="lyr-l${cls}">${inner || '<br>'}</div>`;
+  const hasCh = (raw) => ch.show && raw.includes('[') && hasChords(raw);
   // A versszakok (üres sorig tartó részek) külön blokkba kerülnek, így kéthasábos
   // nézetben a hasábhatár nem vághat ketté versszakot vagy refrént.
   let html = ''; let st = ''; let open = false;
   const close = () => { if (open) { st += '</div>'; open = false; } };
   const flush = () => { close(); if (st) { html += `<div class="lyr-st">${st}</div>`; st = ''; } };
+  // kikapcsolt akkordoknál az akkordsor eltűnik; ha egy versszak csak ilyenből állt, az utána jövő üres sor sem kell
+  let hidden = false;
+  const textLine = (raw, li, pre = '', off = 0, cOff = 0) => { hidden = false; return line(pre + chordSegHTML(raw, ch, li, off, cOff), hasCh(raw) ? ' has-ch' : ''); };
+  const chordRow = (raw, li) => { if (ch.show) return line(chordRowHTML(raw, ch, li), ' lyr-chordrow'); hidden = true; return ''; };
+  const gap = () => { const skip = hidden && !st; hidden = false; flush(); if (!skip) html += line(''); };
   if (!highlight) {
-    for (const l of String(text).split('\n')) {
-      if (l.trim()) st += line(esc(l)); else { flush(); html += line(''); }
-    }
+    String(text).split('\n').forEach((l, i) => {
+      if (!l.trim()) gap(); else if (isChordOnlyLine(l)) st += chordRow(l, i); else st += textLine(l, i);
+    });
     flush();
     return html;
   }
+  const lines = String(text).split('\n');
   for (const p of parseLyrics(text)) {
     if (p.ref) {
       // új jel = új refrénblokk (két egymást követő refrén külön keretet kap)
       if (p.kind === 'ref-label' || p.mark) close();
       if (!open) { st += '<div class="lyr-ref">'; open = true; }
       if (p.kind === 'ref-label') st += line(`<span class="lyr-ref-label">${esc(p.text)}</span>`);
-      else st += line((p.mark ? `<span class="lyr-ref-mark">${esc(p.mark)}</span> ` : '') + esc(p.text));
+      else if (p.kind === 'chords') st += chordRow(p.text, p.i);
+      else if (p.mark) {
+        // a jel utáni rész helye a teljes sorban (Akkordozás módhoz)
+        const full = parseChordLine(lines[p.i]); const rest = parseChordLine(p.text);
+        st += textLine(p.text, p.i, `<span class="lyr-ref-mark">${esc(p.mark)}</span> `, full.text.length - rest.text.length, full.chords.length - rest.chords.length);
+      } else st += textLine(p.text, p.i);
       continue;
     }
     close();
-    if (p.kind === 'gap') { flush(); html += line(''); }
+    if (p.kind === 'gap') gap();
     else if (p.kind === 'section') st += line(`<span class="lyr-sec">${esc(p.text)}</span>`);
-    else st += line(esc(p.text));
+    else if (p.kind === 'chords') st += chordRow(p.text, p.i);
+    else st += textLine(p.text, p.i);
   }
   flush();
   return html;

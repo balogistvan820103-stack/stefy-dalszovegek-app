@@ -484,6 +484,156 @@ await test('Tömeges műveletek: kedvenc, címke, törlés egy lépésben', asyn
   assert(!ids.some((id) => store.getSong(id)), 'újratöltés után sincsenek meg');
 });
 
+/* ---------------- Akkordok és transzponálás ---------------- */
+
+await test('Akkordfelismerés: valódi akkordnevek igen, [Refrén] / [R] / [1. versszak] / [Intro] nem', async () => {
+  const { isChord, parseChordLine, isChordOnlyLine } = await import('../js/chords.js');
+  for (const c of ['Am', 'E', 'H', 'Hm', 'B', 'Bb', 'F#m7', 'C#', 'Ebm', 'Cmaj7', 'Gsus4', 'Dsus2', 'Cdim', 'Caug', 'C6', 'Am9', 'Cadd9', 'D/F#', 'Am/G', 'E7#9', 'Dm7b5', 'C(add9)', 'G7']) assert(isChord(c), `akkord: ${c}`);
+  for (const c of ['Refrén', 'R', 'Ref', '1. versszak', 'Versszak', 'Intro', 'Outro', 'Bridge', 'Coda', 'Hook', 'Dal', 'Add', 'am', '', '2x', 'Am Dm']) assert(!isChord(c), `nem akkord: ${c}`);
+  eq(parseChordLine('[Am]Csengess be [E]hozzám'), { text: 'Csengess be hozzám', chords: [{ pos: 0, name: 'Am' }, { pos: 12, name: 'E' }] }, 'sor szétbontása');
+  eq(parseChordLine('[Refrén] [Am]Szól').text, '[Refrén] Szól', 'a címke a szövegben marad');
+  assert(isChordOnlyLine('[Am] [Dm] [E]'), 'csak akkordokból álló sor');
+  assert(!isChordOnlyLine('[Refrén]') && !isChordOnlyLine('[1. versszak]') && !isChordOnlyLine('[Am]szó'), 'címke vagy szöveges sor nem akkordsor');
+  const { parseLyrics } = await import('../js/lyrics.js');
+  const kinds = (t) => parseLyrics(t).map((p) => p.kind);
+  eq(kinds('[Refrén]\n[R]\n[1. versszak]\n[Intro]\n[Am] [Dm] [E]\n[Am]\n[Am]Csengess be'), ['ref-label', 'ref-label', 'section', 'section', 'chords', 'chords', 'line'], 'címkék maradnak címkék, az akkordsor akkordsor');
+  eq(parseLyrics('[Refrén]\n[Am] [E]\n[Am]Szól a nóta')[1], { kind: 'chords', text: '[Am] [E]', ref: true, i: 1 }, 'refrénen belüli akkordsor a refrénhez tartozik');
+});
+
+await test('Transzponálás: 12 lépés után az eredeti jön vissza (magyar és nemzetközi jelöléssel)', async () => {
+  const { transposeChord, normShift, shiftLabel, chordFormatter } = await import('../js/chords.js');
+  for (const notation of ['hu', 'intl']) {
+    for (const c of ['C', 'C#m', 'Db', 'D7', 'Eb', 'E', 'F', 'F#m7', 'G', 'Ab', 'Am', 'H7', 'Hm', 'Bb', 'D/F#', 'Cmaj7/E', 'Gsus4', 'Dm7b5']) {
+      let x = c; let shift = 0;
+      for (let i = 0; i < 12; i++) { shift = normShift(shift + 1); x = transposeChord(c, shift, notation); }
+      eq(shift, 0, 'eltolás 12 lépés után');
+      eq(x, transposeChord(c, 0, notation), `${notation}: ${c} (12 × +1)`);
+      let y = 0; for (let i = 0; i < 12; i++) y = normShift(y - 1);
+      eq(y, 0, '12 × −1');
+    }
+  }
+  eq([shiftLabel(2), shiftLabel(-1), shiftLabel(0), shiftLabel(12), shiftLabel(13)], ['+2', '−1', '0', '0', '+1'], 'eltolás kiírása');
+  const f = chordFormatter('[Am]Csengess be [E]hozzám', 2, 'hu');
+  eq([f('Am'), f('E'), f('Dm'), f('G7')], ['Hm', 'F#', 'Em', 'A7'], 'Am → Hm (+2)');
+  eq(chordFormatter('[Am]x', -2, 'hu')('Am'), 'Gm', '−2');
+});
+
+await test('H/B: magyar jelölésnél H = fehér, B = fekete; nemzetközinél B = fehér, Bb = fekete', async () => {
+  const { transposeChord: t, notePc, chordFormatter, rootChoices } = await import('../js/chords.js');
+  eq([notePc('H', '', 'hu'), notePc('B', '', 'hu'), notePc('B', 'b', 'hu')], [11, 10, 10], 'magyar: H, B, Bb');
+  eq([notePc('B', '', 'intl'), notePc('B', 'b', 'intl'), notePc('H', '', 'intl')], [11, 10, 11], 'nemzetközi: B, Bb (és a H is értelmezhető)');
+  eq([t('H', 1, 'hu'), t('B', 1, 'hu'), t('A', 1, 'hu', true), t('H', -1, 'hu', true)], ['C', 'H', 'B', 'B'], 'magyar transzponálás');
+  eq([t('B', 1, 'intl'), t('Bb', 1, 'intl'), t('A', 1, 'intl', true), t('B', -1, 'intl', true)], ['C', 'B', 'Bb', 'Bb'], 'nemzetközi transzponálás');
+  eq([t('B', 0, 'hu'), t('Bb', 0, 'hu'), t('H7', 0, 'intl'), t('Bb', 0, 'intl')], ['B', 'B', 'B7', 'Bb'], 'eltolás nélkül a jelölést követi');
+  // E-dúr dal +1 → F-dúr: a fekete billentyű B (magyar) / Bb (nemzetközi), nem A#
+  eq(chordFormatter('[E]x [A]y [H7]z', 1, 'hu')('A'), 'B', 'F-dúrban B, nem A# (magyar)');
+  eq(chordFormatter('[E]x [A]y [H7]z', 1, 'intl')('A'), 'Bb', 'F-dúrban Bb, nem A# (nemzetközi)');
+  eq(chordFormatter('[E]x [A]y [H7]z', 1, 'hu')('H7'), 'C7', 'H7 → C7');
+  // C-dúr +2 → D-dúr (keresztes): F → G, C# marad keresztes
+  eq(chordFormatter('[C]x [F]y [H]z', 2, 'hu')('H'), 'C#', 'D-dúrban C#');
+  eq(chordFormatter('[Am]x', 5, 'hu')('Am'), 'Dm', 'Am +5 → Dm');
+  eq(chordFormatter('[Am]x [E]y', 1, 'hu')('E'), 'F', 'B-moll (b) hangnem: E → F');
+  eq(chordFormatter('[Dm]x [A]y', 1, 'hu')('A'), 'B', 'esz-moll: bével');
+  eq(rootChoices('hu'), ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'B', 'H'], 'választó: magyar');
+  eq(rootChoices('intl').slice(-2), ['Bb', 'B'], 'választó: nemzetközi');
+});
+
+await test('Akkordok megjelenítése: a szó fölött, zárójel nélkül, ki/be kapcsolható, sor végén is', async () => {
+  const { lyricsHTML } = await import('../js/components.js');
+  const box = document.createElement('div');
+  box.innerHTML = lyricsHTML('[1. versszak]\n[Am]Csengess be [E]hozzám\nCsen[G]gess [C]\n\n[Refrén]\n[Am] [Dm] [E]\n[F]Szól a nóta', true, { chords: true, notation: 'hu' });
+  assert(!box.textContent.includes('[Am]') && !/\[(Am|E|G|C|Dm|F)\]/.test(box.textContent), 'szögletes zárójeles akkord nem látszik');
+  eq(box.querySelector('.lyr-sec')?.textContent, '1. versszak', 'a címke megmarad');
+  eq(box.querySelector('.lyr-ref-label')?.textContent, 'Refrén', 'a refrénjel megmarad');
+  const cols = [...box.querySelectorAll('.ch-w')].map((w) => [w.querySelector('.ch').textContent, w.textContent.slice(w.querySelector('.ch').textContent.length)]);
+  eq(cols.slice(0, 4), [['Am', 'Csengess'], ['E', 'hozzám'], ['G', 'gess'], ['C', ' ']], 'akkord a szó / szótag elején, sor végén is');
+  eq(box.querySelectorAll('.ch-word')[2].textContent.replace('G', ''), 'Csengess', 'a szótagra tett akkord a szót nem vágja ketté');
+  assert(box.querySelector('.lyr-ref .lyr-chordrow'), 'akkordsor a refrénben');
+  eq([...box.querySelectorAll('.lyr-chordrow .cn')].map((x) => x.textContent), ['Am', 'Dm', 'E'], 'akkordsor');
+  const off = document.createElement('div');
+  off.innerHTML = lyricsHTML('[Am]Csengess be [E]hozzám\n[Am] [E]\nmásik', true, { chords: false });
+  eq(off.querySelectorAll('.ch, .cn, .lyr-chordrow').length, 0, 'kikapcsolva nincs akkord');
+  eq([...off.querySelectorAll('.lyr-l')].map((d) => d.textContent), ['Csengess be hozzám', 'másik'], 'kikapcsolva a szöveg zárójel nélkül, az akkordsor eltűnik');
+  const tr = document.createElement('div');
+  tr.innerHTML = lyricsHTML('[Am]Csengess be [E]hozzám', true, { shift: 2, notation: 'hu' });
+  eq([...tr.querySelectorAll('.cn')].map((x) => x.textContent), ['Hm', 'F#'], 'transzponálva jelenik meg');
+  const plain = document.createElement('div');
+  plain.innerHTML = lyricsHTML('[Am]Csengess <b>be</b>', false, {});
+  assert(!plain.querySelector('b') && plain.textContent.includes('<b>be</b>'), 'HTML-biztonság akkordos sorban is');
+  eq(plain.querySelector('.cn')?.textContent, 'Am', 'kiemelés nélkül is akkord a szó fölött');
+});
+
+await test('Transzponálás dalonként mentődik, a dalszöveg nem változik; mentésben benne van; régi mentés betöltődik', async () => {
+  const lyrics = '[Am]Csengess be [E]hozzám\nma este';
+  const s = await store.saveSong({ title: 'Csengess be hozzám (akkord)', lyrics });
+  const before = store.getSong(s.id).updatedAt;
+  await store.setTranspose(s.id, 2);
+  await store.setTranspose(s.id, 14);
+  await store.reload();
+  eq(store.getSong(s.id).transpose, 2, 'eltolás megmarad újraindítás után (14 → 2)');
+  eq(store.getSong(s.id).lyrics, lyrics, 'az elmentett szöveg NEM változik');
+  eq(store.getSong(s.id).updatedAt, before, 'a módosítás ideje sem változik');
+  await store.saveSong({ ...store.getSong(s.id), title: 'Csengess be hozzám (akkord)' });
+  eq(store.getSong(s.id).transpose, 2, 'szerkesztés után is megmarad');
+  const exp = await backup.buildExport({ includeMedia: false });
+  eq(exp.songs.find((x) => x.id === s.id).transpose, 2, 'a mentésben benne van');
+  const { data } = backup.parseBackup(JSON.stringify(exp));
+  eq(data.songs.find((x) => x.id === s.id).transpose, 2, 'a mentésből visszatöltődik');
+  const old = backup.parseBackup(JSON.stringify({ app: 'stefy-dalszovegek', format: 1, songs: [{ id: 'old1', title: 'Régi dal', lyrics: '[Am]régi' }], settings: { app: { showClock: false } } }));
+  eq(old.data.songs[0].transpose, 0, 'régi mentés (eltolás nélkül): eredeti hangnem');
+  eq(old.data.songs[0].lyrics, '[Am]régi', 'régi mentés szövege változatlan');
+  eq(old.data.settings.app.chordNotation, 'hu', 'régi beállításoknál alapból magyar jelölés');
+  eq(old.data.settings.app.showClock, false, 'a régi beállítás megmarad');
+  const bad = backup.parseBackup(JSON.stringify({ songs: [{ title: 'x', lyrics: 'y', transpose: 'hibás' }] }));
+  eq(bad.data.songs[0].transpose, 0, 'hibás érték → 0');
+  await store.deleteSong(s.id);
+});
+
+await test('Keresés akkordos szövegben: az akkordok nem zavarnak', async () => {
+  const s = await store.saveSong({ title: 'Akkordos keresőpróba', lyrics: '[Am]Csengess be [E]hozzám\nCsen[G]gess újra\n[Dm] [G7]' });
+  const hit = (q) => store.querySongs({ query: q }).some((x) => x.song.id === s.id);
+  assert(hit('csengess'), '„csengess” megtalálja');
+  assert(hit('be hozzam'), 'kifejezés két akkord között');
+  assert(hit('csengess ujra'), 'szótagra tett akkord nem vágja ketté a szót');
+  assert(!hit('g7'), 'akkordnévre nem talál (nem dalszöveg)');
+  await store.deleteSong(s.id);
+});
+
+await test('„Akkord a sor fölött” átalakítás: a fölötte lévő szóhoz kerül; bizonytalan sorhoz nem nyúl', async () => {
+  const { convertChordLines, isPlainChordLine } = await import('../js/chords.js');
+  const src = 'Am       E\nCsengess be hozzám\n\nC         G     Am\nEgy két három négy öt';
+  const r = convertChordLines(src);
+  eq(r.text, '[Am]Csengess [E]be hozzám\n\n[C]Egy két [G]három [Am]négy öt', 'akkordok a szavak elején');
+  eq(r.changes.length, 2, 'két átalakítás');
+  eq(convertChordLines('Intro: Am G\nszöveg').changes.length, 0, 'nem csak akkordokból álló sor: nem nyúl hozzá');
+  eq(convertChordLines('A\nszöveg').changes.length, 0, 'egyetlen magányos betű bizonytalan: nem nyúl hozzá');
+  eq(convertChordLines('Am  Dm  E\n\nszöveg').text, '[Am] [Dm] [E]\n\nszöveg', 'szöveg nélküli akkordsor → akkordsor');
+  eq(convertChordLines('Am      E\nrövid').text, '[Am]rövid [E]', 'a sor végén túli akkord a sor végére');
+  eq(convertChordLines('Am\n[G]már akkordos').changes.length, 1, 'akkordos szövegsorba nem olvaszt bele');
+  eq(convertChordLines('Am\n[G]már akkordos').text, '[Am]\n[G]már akkordos', '…csak az akkordsort alakítja');
+  eq(convertChordLines('[Am]Csengess be\nsima sor').changes.length, 0, 'a már átalakított szöveg nem változik');
+  assert(isPlainChordLine('  Am   F#m7  H7  ') && isPlainChordLine('E A') && !isPlainChordLine('Anna Mari') && !isPlainChordLine('Hé Bé'), 'akkordsor-felismerés');
+  eq(convertChordLines('Am\tE\nCsengess be hozzám').text, '[Am]Csengess [E]be hozzám', 'tabulátorral igazított akkordsor');
+});
+
+await test('Akkordozás mód műveletei: hozzáadás a szó elejére, csere, ◀ ▶ betűnként, törlés', async () => {
+  const { setChordAt, moveChord, deleteChord } = await import('../js/chordedit.js');
+  let r = setChordAt('Csengess be hozzám', null, 0, 'Am');
+  eq(r, { line: '[Am]Csengess be hozzám', ci: 0 }, 'új akkord a szó elejére');
+  r = setChordAt(r.line, null, 12, 'E');
+  eq(r, { line: '[Am]Csengess be [E]hozzám', ci: 1 }, 'második akkord');
+  r = setChordAt(r.line, 0, 0, 'Hm');
+  eq(r.line, '[Hm]Csengess be [E]hozzám', 'csere');
+  r = moveChord(r.line, 0, 1);
+  eq(r, { line: 'C[Hm]sengess be [E]hozzám', ci: 0 }, 'egy betűvel jobbra');
+  r = moveChord('Csengess[Hm] be', 0, 1);
+  eq(r.line, 'Csengess [Hm]be', 'a szóközt átugorja');
+  r = moveChord('Csengess [Hm]be', 0, -1);
+  eq(r.line, 'Csenges[Hm]s be', 'balra is átugorja');
+  eq(moveChord('[Am]x', 0, -1).line, '[Am]x', 'a sor elejénél megáll');
+  eq(deleteChord('[Am]Csengess be [E]hozzám', 0), 'Csengess be [E]hozzám', 'törlés');
+});
+
 await test('Teljesítmény: 3000 dal keresése gyors', async () => {
   const words = ['szerelem', 'éjszaka', 'hajnal', 'tánc', 'nyár', 'csillag', 'tenger', 'szív', 'zene', 'álom'];
   const songs = [];

@@ -46,6 +46,14 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
   kettősponttal is) és az önálló R / R: / R. – külön sorban vagy a refrén első sorának elején. A refrén minden sora
   színes csíkot és halvány hátteret kap az üres sorig vagy a következő jelig; szöveg nélküli jelnél „Refrén” címke.
   A szín a Beállításokban választható; a dalok elmentett szövege nem változik. Szerkesztőben „Refrén” gomb.
+- Akkordok és transzponálás (`js/chords.js`, `js/chordedit.js`): a szövegben `[Am]Csengess be [E]hozzám` formában,
+  a képernyőn a szó / szótag kezdete fölött (zárójel nélkül, átfedés nélkül, tördeléskor is a saját szava fölött).
+  Csak valódi akkordnév számít akkordnak; a [Refrén], [R], [1. versszak], [Intro] címkék maradnak. Ki/be kapcsolás és
+  −1 / +1 / Eredeti az olvasóban és fellépés módban; az eltolás dalonként mentődik (a mentésbe is), a szöveget nem írja át.
+  Kereszt/bé a célhangnem szerint. Beállításokban magyar (H/B) vagy nemzetközi (B/Bb) jelölés. „Akkordozás” mód:
+  koppintás egy szóra → akkordválasztó (alaphang, fajta, basszus, a dalban már használtak), ◀ ▶ betűnként, törlés,
+  visszavonás. Szerkesztőben „Akkordsorok átalakítása” (akkord a sor fölött → tárolási forma) előnézettel.
+  A keresést és a dalkártyákat az akkordok nem zavarják.
 - Új dal: „Beírás / bemásolás”, „Fotózás füzetből” (Tesseract, magyar „best” csomag, teljesen a készüléken, offline),
   „Fájlból”
 - Saját háttér a dalszöveg mögött (állítható sötétítéssel) és külön saját kezdőkép

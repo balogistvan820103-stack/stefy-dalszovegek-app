@@ -4,11 +4,13 @@ import * as store from '../store.js';
 import { esc, toast, confirmBox, modal, clamp, debounce, fmtISODate } from '../util.js';
 import { icon, tile } from '../icons.js';
 import { markRefrain } from '../lyrics.js';
+import { hasChords, usedChords, normShift, shiftLabel, chordFormatter, convertChordLines } from '../chords.js';
+import { chordEditor } from '../chordedit.js';
 import { applyReaderStyle, lyricsHTML, fontPanel, mediaURL, FONT_MIN, FONT_MAX, emptyState, fitColumns } from '../components.js';
 
 export async function readerView(ctx) {
   const id = ctx.params[0];
-  const song = store.getSong(id);
+  let song = store.getSong(id);
   if (!song) {
     const el = document.createElement('div');
     el.className = 'page';
@@ -30,6 +32,7 @@ export async function readerView(ctx) {
         ${song.artist || tags.length ? `<div class="reader-meta">${song.artist ? `<span class="artist">${esc(song.artist)}</span>` : ''}
           ${tags.map((t) => `<a class="mini-chip" style="--c:${esc(t.color)}" href="#/songs?tab=tag&tag=${encodeURIComponent(t.id)}">${esc(t.name)}</a>`).join('')}</div>` : ''}
       </header>
+      <div class="chord-bar"></div>
       <div class="lyrics"></div>
     </article>
     <div class="font-pop card" hidden></div>
@@ -38,12 +41,73 @@ export async function readerView(ctx) {
       <button type="button" class="ft-btn ft-big" data-size="2" aria-label="Nagyobb betű">A<sup>+</sup></button>
     </div>`;
   const lyr = el.querySelector('.lyrics');
+  const bar = el.querySelector('.chord-bar');
+  let ce = null; // Akkordozás mód (ha aktív)
   const paint = () => {
     const r = store.settings('reader');
+    song = store.getSong(id) || song;
     applyReaderStyle(el, r);
-    lyr.innerHTML = lyricsHTML(song.lyrics, r.highlightSections);
+    if (ce) ce.paint();
+    else lyr.innerHTML = lyricsHTML(song.lyrics, r.highlightSections, { chords: store.settings('app').showChords !== false, shift: song.transpose || 0 });
+    paintChordBar();
     refit();
   };
+
+  /* ----- akkordok: ki/be, transzponálás, Akkordozás mód ----- */
+  const paintChordBar = () => {
+    const has = hasChords(song.lyrics);
+    const show = store.settings('app').showChords !== false;
+    const sh = normShift(song.transpose);
+    let key = '';
+    if (has && show) {
+      const first = usedChords(song.lyrics)[0];
+      const orig = chordFormatter(song.lyrics, 0)(first);
+      key = `<span class="cb-key">${sh ? `${esc(orig)} → <b>${esc(chordFormatter(song.lyrics, sh)(first))}</b>` : `Kezdő akkord: ${esc(orig)}`}</span>`;
+    }
+    bar.innerHTML = `
+      ${has ? `<button type="button" class="cb-btn${show ? ' on' : ''}" data-ch="toggle" aria-pressed="${show}">${icon('songs')} Akkordok ${show ? 'be' : 'ki'}</button>` : ''}
+      ${has && show ? `<span class="cb-tr" role="group" aria-label="Hangnemváltás">
+        <button type="button" class="cb-btn" data-ch="down" aria-label="Fél hanggal lejjebb">−1</button>
+        <span class="cb-shift" title="Eltolás félhangban">${shiftLabel(sh)}</span>
+        <button type="button" class="cb-btn" data-ch="up" aria-label="Fél hanggal feljebb">+1</button>
+        <button type="button" class="cb-btn" data-ch="orig" ${sh ? '' : 'disabled'}>Eredeti</button>${key}</span>` : ''}
+      <button type="button" class="cb-btn" data-ch="edit">${icon('edit')} Akkordozás</button>`;
+  };
+  bar.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-ch]');
+    if (!b) return;
+    const act = b.dataset.ch;
+    if (act === 'toggle') {
+      await store.patchSettings('app', { showChords: store.settings('app').showChords === false });
+      paint();
+      return;
+    }
+    if (act === 'up' || act === 'down' || act === 'orig') {
+      const next = act === 'orig' ? 0 : normShift((song.transpose || 0) + (act === 'up' ? 1 : -1));
+      song = await store.setTranspose(id, next);
+      paint();
+      return;
+    }
+    if (act === 'edit') {
+      if (store.settings('app').performLock) { toast('A fellépés-zárolás be van kapcsolva – az akkordozás tiltva. A felső lakat ikonnal oldhatod fel.', 'error', 4500); return; }
+      if (!String(song.lyrics || '').trim()) { toast('Ehhez a dalhoz még nincs dalszöveg. Előbb írd be a szerkesztőben.', 'info', 3500); return; }
+      ce = chordEditor({
+        root: el,
+        lyr,
+        text: song.lyrics,
+        onExit: async (text) => {
+          if (text !== null) {
+            song = await store.saveSong({ ...song, lyrics: text });
+            toast('Az akkordok elmentve.', 'success');
+          }
+          ce = null;
+          paint();
+        },
+      });
+      paint();
+      window.scrollTo({ top: 0 });
+    }
+  });
   // kéthasábos nézet fekvő tableten, ha a dal egy hasábban nem fér ki a képernyőre
   const refit = () => requestAnimationFrame(() => {
     if (!lyr.isConnected) return;
@@ -124,8 +188,10 @@ export async function readerView(ctx) {
     nav: 'songs',
     el,
     actions: [favBtn, fontBtn, listBtn, editBtn],
+    canLeave: async () => !ce?.dirty(),
+    leaveMessage: 'Az akkordokon végzett módosítások nincsenek elmentve. Biztosan kilépsz mentés nélkül?',
     mounted: () => refit(),
-    cleanup: () => { panel?.flush(); saveSize.flush(); window.removeEventListener('resize', onResize); },
+    cleanup: () => { panel?.flush(); saveSize.flush(); window.removeEventListener('resize', onResize); ce?.destroy(); },
   };
 }
 
@@ -149,6 +215,31 @@ export async function addToSetlistDialog(songId) {
   const { added } = await store.addSongsToSetlist(res, [songId]);
   const l = store.state.setlists.get(res);
   toast(added ? `Hozzáadva: „${l.name}” (a lista végére).` : 'A dal már rajta van ezen a listán.', added ? 'success' : 'info');
+}
+
+/**
+ * „Akkord a sor fölött” szöveg átalakítása előnézettel. Csak jóváhagyás után ad vissza új szöveget
+ * (különben null). A biztosan fel nem ismert sorokhoz nem nyúl.
+ */
+export async function convertChordLinesDialog(text) {
+  const { text: out, changes } = convertChordLines(text);
+  if (!changes.length) {
+    toast('Nem találtam biztosan felismerhető akkordsort (csak akkordokból álló sort a szöveg fölött).', 'info', 4500);
+    return null;
+  }
+  const body = document.createElement('div');
+  body.innerHTML = `<p><span class="conv-count">${changes.length} akkordsor</span> alakul át. Így fog kinézni (az akkordok a szavak fölött):</p>
+    <div class="conv-preview"><div class="lyrics"></div></div>
+    <p class="muted small">${icon('info')} A szövegben az akkord szögletes zárójelben áll, ahol a váltás van, pl. „[Am]Csengess be [E]hozzám”. Ha valamelyik akkord nem a jó szótag fölé került, utána az „Akkordozás” módban ◀ ▶ nyilakkal arrébb tolhatod.</p>`;
+  applyReaderStyle(body.querySelector('.conv-preview'));
+  body.querySelector('.lyrics').innerHTML = lyricsHTML(out, store.settings('reader').highlightSections, { chords: true });
+  const ok = await modal({
+    title: 'Akkordsorok átalakítása',
+    wide: true,
+    body,
+    buttons: [{ label: 'Mégse', value: null, kind: 'ghost' }, { label: 'Átalakítás', value: true, kind: 'primary' }],
+  });
+  return ok ? out : null;
 }
 
 /* ---------------- Szerkesztő ---------------- */
@@ -193,7 +284,11 @@ export function editorView(ctx) {
           <button type="button" class="btn btn-gold btn-sm" data-act="refrain">${icon('star')} Refrén</button>
           <small class="muted">Jelöld ki a refrén sorait (vagy állj a kurzorral a versszakba), majd nyomd meg.</small>
         </div>
-        <textarea class="input lyrics-input" name="lyrics" aria-label="Dalszöveg" rows="16" spellcheck="false" placeholder="Írd vagy másold be ide a dalszöveget.&#10;&#10;Tipp: a [Refrén] vagy [1. versszak] formájú sorok színesen kiemelve jelennek meg.">${esc(song?.lyrics || '')}</textarea></div>
+        <div class="ref-btn-row">
+          <button type="button" class="btn btn-teal btn-sm" data-act="convert-chords">${icon('songs')} Akkordsorok átalakítása</button>
+          <small class="muted">Ha az akkordok külön sorban, a szöveg fölött állnak: a fölöttük lévő szóhoz teszi őket, pl. [Am]Csengess be [E]hozzám.</small>
+        </div>
+        <textarea class="input lyrics-input" name="lyrics" aria-label="Dalszöveg" rows="16" spellcheck="false" placeholder="Írd vagy másold be ide a dalszöveget.&#10;&#10;Tipp: a [Refrén] vagy [1. versszak] formájú sorok színesen kiemelve jelennek meg. Akkord: [Am]Csengess be [E]hozzám – az akkord a szó fölött látszik.">${esc(song?.lyrics || '')}</textarea></div>
       <div class="form-actions">
         ${!isNew ? `<button type="button" class="btn btn-danger" data-act="delete">${icon('trash')} Törlés</button>` : ''}
         <span class="spacer"></span>
@@ -248,6 +343,14 @@ export function editorView(ctx) {
       ta.setSelectionRange(r.selStart, r.selEnd);
       dirty = true;
       toast('[Refrén] jel beszúrva.', 'success', 1500);
+    }
+    if (b.dataset.act === 'convert-chords') {
+      const ta = form.elements.lyrics;
+      const r = await convertChordLinesDialog(ta.value);
+      if (r === null) return;
+      ta.value = r;
+      dirty = true;
+      toast('Átalakítva. A dal a Mentés gombbal kerül tárolásra.', 'success', 3000);
     }
     if (b.dataset.act === 'cancel') ctx.goBack(isNew ? '#/songs' : `#/song/${encodeURIComponent(song.id)}`);
     if (b.dataset.act === 'delete') {

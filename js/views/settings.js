@@ -9,7 +9,7 @@ import { fontPanel, applyReaderStyle, lyricsHTML, mediaURL, processImage, pickFi
 import { txtImportFlow } from '../txtimport.js';
 import { applyListTitleSize } from './songs.js';
 
-const SAMPLE = '[Refrén]\nMindig veled a színpadon,\nfényben, dalban, hajnalon.\nSzól a zene, száll a szó,\nveled minden olyan jó.';
+const SAMPLE = '[Refrén]\n[F]Mindig veled a [C]színpadon,\n[Dm]fényben, dalban, [Gm]hajnalon.\nSzól a zene, száll a szó,\nveled minden olyan jó.';
 
 const WAKE_TEXT = {
   off: 'Kikapcsolva – a képernyő a rendszer beállítása szerint kikapcsolhat.',
@@ -47,6 +47,16 @@ export function settingsView(ctx) {
       <label class="field"><span class="field-label">Dalcímek mérete a listákban <b data-v="lts">${app.listTitleSize} px</b></span>
         <input type="range" min="14" max="44" step="1" value="${app.listTitleSize}" data-lts></label>
       <div class="lts-preview"><span class="song-title">Erdőben nyíló gyöngyvirág</span></div>
+    </section>
+
+    <section class="card set-sec">
+      <h2 class="sec-head">${tile('songs', 'teal')} Akkordok</h2>
+      <label class="switch-row"><input type="checkbox" data-k="showChords" ${app.showChords !== false ? 'checked' : ''}><span class="switch"></span><span>Akkordok mutatása a dalszöveg fölött (az olvasóban és fellépés módban egy gombbal is ki/be kapcsolható)</span></label>
+      <div class="notation-choice" role="radiogroup" aria-label="Akkordjelölés">
+        <label><input type="radio" name="notation" value="hu" ${app.chordNotation !== 'intl' ? 'checked' : ''}><span><b>Magyar jelölés</b> (alapértelmezett)<br><small class="muted">H = fehér billentyű, B = a H alatti fekete billentyű</small></span></label>
+        <label><input type="radio" name="notation" value="intl" ${app.chordNotation === 'intl' ? 'checked' : ''}><span><b>Nemzetközi jelölés</b><br><small class="muted">B = fehér billentyű, Bb = fekete billentyű</small></span></label>
+      </div>
+      <p class="muted small">${icon('info')} A dalszövegben lévő B és H betűket is e szerint érti, és a transzponált akkordokat is így írja ki. A hangnemváltás dalonként mentődik; a dal elmentett szövege nem változik.</p>
     </section>
 
     <section class="card set-sec">
@@ -135,6 +145,7 @@ export function settingsView(ctx) {
       if (val && st === 'unsupported') toast(wake.unsupportedReason(), 'error', 6000);
       else if (val && st === 'active') toast('A képernyő ébren marad.', 'success');
     }
+    if (k === 'showChords') paintPreview();
     if (k === 'performLock') toast(val ? 'Zárolás bekapcsolva.' : 'Zárolás feloldva.', 'success');
   });
 
@@ -142,11 +153,18 @@ export function settingsView(ctx) {
   const preview = el.querySelector('.font-preview');
   const paintPreview = () => {
     applyReaderStyle(preview);
-    preview.querySelector('.lyrics').innerHTML = lyricsHTML(SAMPLE, store.settings('reader').highlightSections);
+    preview.querySelector('.lyrics').innerHTML = lyricsHTML(SAMPLE, store.settings('reader').highlightSections, { chords: store.settings('app').showChords !== false });
   };
   const panel = fontPanel({ onChange: paintPreview });
   el.querySelector('[data-font-panel]').replaceWith(panel);
   paintPreview();
+
+  el.querySelectorAll('input[name=notation]').forEach((r) => r.addEventListener('change', async () => {
+    if (!r.checked) return;
+    await store.patchSettings('app', { chordNotation: r.value === 'intl' ? 'intl' : 'hu' });
+    paintPreview();
+    toast(r.value === 'intl' ? 'Nemzetközi jelölés: B = fehér, Bb = fekete billentyű.' : 'Magyar jelölés: H = fehér, B = fekete billentyű.', 'success', 2200);
+  }));
 
   const ltsInput = el.querySelector('[data-lts]');
   const saveLts = debounce(() => store.saveSettings('app', store.settings('app')), 300);
