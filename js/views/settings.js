@@ -5,11 +5,11 @@ import * as wake from '../wakelock.js';
 import * as backup from '../backup.js';
 import { esc, toast, confirmBox, modal, fmtDateTime, fmtBytes, debounce } from '../util.js';
 import { icon, tile } from '../icons.js';
-import { fontPanel, applyReaderStyle, lyricsHTML, mediaURL, processImage, pickFile } from '../components.js';
+import { fontPanel, applyReaderStyle, lyricsHTML, mediaURL, processImage, pickFile, bgErrorToast } from '../components.js';
 import { txtImportFlow } from '../txtimport.js';
 import { applyListTitleSize } from './songs.js';
 import { INST_FIELDS, INST_KEYS, instLine } from '../inst.js';
-import { openWelcome } from '../welcome.js';
+import { openWelcome, confirmNotationSwitch } from '../welcome.js';
 
 const SAMPLE = '[Refrén]\n[F]Mindig veled a [C]színpadon,\n[Dm]fényben, dalban, [Gm]hajnalon.\nSzól a zene, száll a szó,\nveled minden olyan jó.';
 
@@ -177,7 +177,15 @@ export function settingsView(ctx) {
 
   el.querySelectorAll('input[name=notation]').forEach((r) => r.addEventListener('change', async () => {
     if (!r.checked) return;
-    await store.patchSettings('app', { chordNotation: r.value === 'intl' ? 'intl' : 'hu' });
+    const prev = store.settings('app').chordNotation === 'intl' ? 'intl' : 'hu';
+    const next = r.value === 'intl' ? 'intl' : 'hu';
+    if (next === prev) return;
+    if (!(await confirmNotationSwitch())) {
+      // Mégse: a korábbi választás marad, semmi nem változik
+      el.querySelectorAll('input[name=notation]').forEach((x) => { x.checked = x.value === prev; });
+      return;
+    }
+    await store.patchSettings('app', { chordNotation: next });
     paintPreview();
     toast(r.value === 'intl' ? 'Nemzetközi jelölés: B = fehér, Bb = fekete billentyű.' : 'Magyar jelölés: H = fehér, B = fekete billentyű.', 'success', 2200);
   }));
@@ -239,7 +247,7 @@ export function settingsView(ctx) {
       await paintThumb(key);
       toast(`${label} háttérképe beállítva.`, 'success');
     } catch (err) {
-      toast(`${err.message} A korábbi kép megmaradt.`, 'error', 6500);
+      bgErrorToast(err);
     }
   }
   async function delBg(key, label) {

@@ -3,7 +3,7 @@
 // ha a felhasználó maga változtat valamit (pl. új nevet ír be), vagy mintadalt kér.
 
 import * as store from './store.js';
-import { esc, toast } from './util.js';
+import { esc, toast, confirmBox } from './util.js';
 import { icon } from './icons.js';
 
 export const SAMPLE_TITLE = 'DalPad mintadal';
@@ -37,6 +37,16 @@ export async function addSampleSong() {
 }
 
 /** Kell-e megmutatni induláskor: csak új, üres felhasználónál, és ha még nem zárta le. */
+/**
+ * Figyelmeztetés a H/B jelölés váltása előtt (a már beírt B akkordok jelentése megváltozik).
+ * true = „Váltás”, false = „Mégse” (ilyenkor semmi nem változhat).
+ */
+export function confirmNotationSwitch() {
+  return confirmBox('Akkordjelölés váltása',
+    'Figyelem: a már beírt B akkordok jelentése megváltozik (magyar jelölésben a B = nemzetközi Bb). Biztosan váltasz?',
+    { okLabel: 'Váltás', cancelLabel: 'Mégse' });
+}
+
 export function shouldShowWelcome() {
   return store.state.fresh && !store.settings('app').welcomeDone;
 }
@@ -141,10 +151,11 @@ export function openWelcome({ reopen = false } = {}) {
       resolve(result);
     };
 
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); finish(); } };
+    let asking = false; // nyitva van-e a jelölésváltás megerősítése (Escape ilyenkor csak azt zárja)
+    const onKey = (e) => { if (e.key === 'Escape' && !asking) { e.stopPropagation(); finish(); } };
     document.addEventListener('keydown', onKey, true);
 
-    box.addEventListener('click', (e) => {
+    box.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-w]');
       if (!b) return;
       const act = b.dataset.w;
@@ -153,7 +164,20 @@ export function openWelcome({ reopen = false } = {}) {
       if (act === 'next') {
         read();
         if (step === 0) used.name = true;
-        if (step === 1) used.notation = true;
+        if (step === 1) {
+          // újranyitáskor (meglévő dalok mellett) a jelölés váltása előtt figyelmeztet
+          let ok = true;
+          if (reopen && st.notation !== startNotation) {
+            asking = true;
+            try { ok = await confirmNotationSwitch(); } finally { asking = false; }
+          }
+          if (!ok) {
+            st.notation = startNotation;
+            render();
+            return;
+          }
+          used.notation = true;
+        }
         if (step === 3) used.sample = true;
       }
       // a „Kihagyás” ezt a lépést változtatás nélkül átugorja

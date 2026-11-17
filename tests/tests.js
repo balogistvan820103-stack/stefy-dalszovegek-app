@@ -853,6 +853,91 @@ await test('Mintadal: saját szöveg akkordokkal, refrénnel, hangszer-jegyzette
   });
 });
 
+/* ---------------- Háttérképek (1.8.2): felismerés, kicsinyítés, tájolás, hibaüzenetek ---------------- */
+
+const img = await import('../js/image.js');
+
+function canvasBlob(w, h, type = 'image/jpeg', paint) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  if (paint) paint(x, w, h); else { x.fillStyle = '#3366cc'; x.fillRect(0, 0, w, h); }
+  return new Promise((r) => c.toBlob(r, type, 0.9));
+}
+async function blobSize(blob) {
+  const b = await createImageBitmap(blob);
+  const s = [b.width, b.height];
+  b.close();
+  return s;
+}
+// EXIF APP1 szegmens (tájolás = o) beillesztése egy JPEG elejére
+async function withOrientation(jpeg, o) {
+  const src = new Uint8Array(await jpeg.arrayBuffer());
+  const tiff = [0x4d, 0x4d, 0x00, 0x2a, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, o, 0, 0, 0, 0, 0, 0, 0, 0];
+  const body = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff];
+  const len = body.length + 2;
+  const seg = [0xff, 0xe1, len >> 8, len & 0xff, ...body];
+  return new Blob([src.subarray(0, 2), new Uint8Array(seg), src.subarray(2)], { type: 'image/jpeg' });
+}
+const asFile = (blob, name) => new File([blob], name, { type: blob.type });
+
+await test('Háttérkép: fejléc-felismerés (JPG, PNG, WEBP, HEIC, RAW) a kép megnyitása nélkül', async () => {
+  const j = await img.sniffImage(asFile(await canvasBlob(321, 123), 'a.jpg'));
+  eq([j.format, j.width, j.height], ['jpeg', 321, 123], 'JPG méret');
+  const p = await img.sniffImage(asFile(await canvasBlob(77, 55, 'image/png'), 'a.png'));
+  eq([p.format, p.width, p.height], ['png', 77, 55], 'PNG méret');
+  const wb = await canvasBlob(90, 40, 'image/webp');
+  if (wb && wb.type === 'image/webp') {
+    const w = await img.sniffImage(asFile(wb, 'a.webp'));
+    eq([w.format, w.width, w.height], ['webp', 90, 40], 'WEBP méret');
+  }
+  const heic = new File([new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63, 0, 0, 0, 0, 0x6d, 0x69, 0x66, 0x31, 0x68, 0x65, 0x69, 0x63])], 'IMG_1234.HEIC', { type: '' });
+  eq((await img.sniffImage(heic)).format, 'heic', 'HEIC felismerése');
+  const dng = new File([new Uint8Array([0x49, 0x49, 0x2a, 0, 8, 0, 0, 0])], 'kep.dng', { type: '' });
+  eq((await img.sniffImage(dng)).format, 'raw', 'RAW (DNG) felismerése');
+});
+
+await test('Háttérkép: EXIF-tájolás – az álló fotó nem fordul el', async () => {
+  // a tárolt kép fekvő (40×20): bal fele piros, jobb fele kék; a 6-os tájolás 90°-kal jobbra forgat
+  const raw = await canvasBlob(40, 20, 'image/jpeg', (x) => { x.fillStyle = '#f00'; x.fillRect(0, 0, 20, 20); x.fillStyle = '#00f'; x.fillRect(20, 0, 20, 20); });
+  const f = asFile(await withOrientation(raw, 6), 'allo.jpg');
+  const s = await img.sniffImage(f);
+  eq([s.orientation, s.width, s.height], [6, 20, 40], 'tájolás és megjelenített méret');
+  const out = await img.processImage(f);
+  eq(await blobSize(out), [20, 40], 'az eredmény álló');
+  const bmp = await createImageBitmap(out);
+  const c = document.createElement('canvas'); c.width = 20; c.height = 40;
+  const x = c.getContext('2d'); x.drawImage(bmp, 0, 0); bmp.close();
+  const top = x.getImageData(10, 5, 1, 1).data; const bottom = x.getImageData(10, 35, 1, 1).data;
+  assert(top[0] > 150 && top[2] < 100, 'fent piros (helyesen elforgatva)');
+  assert(bottom[2] > 150 && bottom[0] < 100, 'lent kék (helyesen elforgatva)');
+});
+
+await test('Háttérkép: nagy fotó és hosszú panoráma kicsinyítve, arányosan', async () => {
+  const big = await img.processImage(asFile(await canvasBlob(4800, 3600), 'nagy.jpg'));
+  eq(await blobSize(big), [2400, 1800], '4800×3600 → 2400×1800');
+  const pano = await img.processImage(asFile(await canvasBlob(12000, 1500), 'panorama.jpg'));
+  eq(await blobSize(pano), [2400, 300], 'panoráma 12000×1500 → 2400×300');
+  const small = await img.processImage(asFile(await canvasBlob(800, 600, 'image/png'), 'kepernyokep.png'));
+  eq(await blobSize(small), [800, 600], 'kis kép nem nagyobbodik');
+  eq(small.type, 'image/jpeg', 'JPEG lesz belőle');
+});
+
+await test('Háttérkép: érthető magyar hibaüzenetek (HEIC, nem kép, kevés hely)', async () => {
+  const heic = new File([new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63, 0, 0, 0, 0, 0x6d, 0x69, 0x66, 0x31, 0x68, 0x65, 0x69, 0x63, 1, 2, 3])], 'IMG_1234.HEIC', { type: 'image/heic' });
+  let e1; try { await img.processImage(heic); } catch (e) { e1 = e; }
+  assert(e1 instanceof img.ImageError, 'HEIC: ImageError');
+  assert(/HEIC/.test(e1.message) && /JPG/.test(e1.message), 'HEIC: ok és tanács a szövegben');
+  assert(/^HEIC/.test(e1.tech), 'HEIC: technikai név');
+  let e2; try { await img.processImage(new File(['hello'], 'level.txt', { type: 'text/plain' })); } catch (e) { e2 = e; }
+  assert(e2 && /nem kép/.test(e2.message), 'nem kép');
+  const q = img.describeImageError(new DOMException('The quota has been exceeded.', 'QuotaExceededError'));
+  assert(/Kevés a szabad hely/.test(q.text), 'kevés hely – magyarul');
+  eq(q.tech, 'QuotaExceededError', 'kevés hely – technikai név');
+  let e3; try { await img.processImage(new File([], 'ures.jpg', { type: 'image/jpeg' })); } catch (e) { e3 = e; }
+  assert(e3 && /üres/.test(e3.message), 'üres fájl');
+});
+
 // vissza a fő teszt-adatbázishoz
 await store.init(DB);
 

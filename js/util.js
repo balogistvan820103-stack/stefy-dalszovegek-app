@@ -78,13 +78,20 @@ export function fmtBytes(n) {
 }
 
 /* ---------- Értesítések (toast) ---------- */
-export function toast(message, type = 'info', ms = 3200) {
+export function toast(message, type = 'info', ms = 3200, { detail = '' } = {}) {
   const root = document.getElementById('toasts');
   if (!root) return;
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
   el.setAttribute('role', type === 'error' ? 'alert' : 'status');
   el.textContent = message;
+  if (detail) {
+    // kis betűs kiegészítés (pl. technikai hibanév) az üzenet végén
+    const d = document.createElement('small');
+    d.className = 'toast-detail';
+    d.textContent = detail;
+    el.appendChild(d);
+  }
   root.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
   const close = () => {

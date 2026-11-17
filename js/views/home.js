@@ -3,7 +3,7 @@
 import * as store from '../store.js';
 import { esc, clamp, toast, confirmBox, fmtISODate } from '../util.js';
 import { icon, tile } from '../icons.js';
-import { mediaURL, processImage, pickFile, songCardHTML, bindFavButtons } from '../components.js';
+import { mediaURL, processImage, pickFile, songCardHTML, bindFavButtons, bgErrorToast } from '../components.js';
 
 const KEYS = ['title', 'subtitle', 'slogan'];
 const LABELS = { title: 'Főcím', subtitle: 'Alcím', slogan: 'Szlogen' };
@@ -152,7 +152,7 @@ export async function homeView(ctx) {
         await heroBg(el.querySelector('.hero-bg'));
         toast('Kezdőképernyő háttérképe beállítva.', 'success');
       } catch (err) {
-        toast(`${err.message} A korábbi kép megmaradt.`, 'error', 6000);
+        bgErrorToast(err);
       }
     }
     if (act === 'bg-del') {

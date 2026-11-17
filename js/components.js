@@ -7,6 +7,7 @@ import { parseLyrics, markRefrain } from './lyrics.js';
 import { parseChordLine, isChordOnlyLine, hasChords, chordFormatter } from './chords.js';
 import { isPlayed } from './night.js';
 import { instLine } from './inst.js';
+import { describeImageError } from './image.js';
 
 /** A dal hangszer-jegyzetsora a Beállítások szerint ('' ha ki van kapcsolva vagy nincs kitöltve). */
 export function songInstLine(song, shift) {
@@ -238,55 +239,13 @@ store.onChange((what) => {
   else if (what.startsWith('media:')) invalidateMedia(what.slice(6));
 });
 
-function loadImageElement(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => resolve({ img, url });
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode')); };
-    img.src = url;
-  });
-}
+// A képfeldolgozás (fejléc-felismerés, kicsinyített megnyitás, hibaüzenetek) az image.js-ben van.
+export { processImage } from './image.js';
 
-/**
- * Kép ellenőrzése és előkészítése (méretcsökkentés JPEG-be). Hibánál magyar
- * nyelvű Error-t dob – a hívó ilyenkor NEM módosítja a korábbi képet.
- */
-export async function processImage(file, maxSide = 2400) {
-  if (!file) throw new Error('Nem választottál ki képet.');
-  const okType = !file.type || file.type.startsWith('image/');
-  if (!okType) throw new Error('A kiválasztott fájl nem kép. Válassz JPG, PNG vagy WEBP formátumú képet.');
-  if (file.size === 0) throw new Error('A kiválasztott kép üres vagy sérült.');
-  if (file.size > 40 * 1024 * 1024) throw new Error('A kép túl nagy (legfeljebb 40 MB lehet).');
-  let source; let w; let h; let cleanup = () => {};
-  try {
-    if ('createImageBitmap' in window) {
-      source = await createImageBitmap(file);
-      w = source.width; h = source.height;
-      cleanup = () => source.close?.();
-    } else throw new Error('fallback');
-  } catch {
-    try {
-      const { img, url } = await loadImageElement(file);
-      source = img; w = img.naturalWidth; h = img.naturalHeight;
-      cleanup = () => URL.revokeObjectURL(url);
-    } catch {
-      throw new Error('A képet nem sikerült megnyitni. Lehet, hogy sérült, vagy a formátuma (pl. HEIC) nem támogatott. Próbáld JPG vagy PNG képpel.');
-    }
-  }
-  if (!w || !h) { cleanup(); throw new Error('A kép mérete érvénytelen.'); }
-  const scale = Math.min(1, maxSide / Math.max(w, h));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(w * scale));
-  canvas.height = Math.max(1, Math.round(h * scale));
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-  cleanup();
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86));
-  if (!blob || blob.size < 100) throw new Error('A kép feldolgozása nem sikerült. Próbálj másik képet.');
-  return blob;
+/** Háttérkép-hiba kijelzése: magyar ok + „A korábbi kép megmaradt.” + kis betűs technikai hibanév. */
+export function bgErrorToast(err) {
+  const { text, tech } = describeImageError(err);
+  toast(`${text} A korábbi kép megmaradt.`, 'error', 9000, { detail: tech ? `technikai hiba: ${tech}` : '' });
 }
 
 /** Fájlválasztó megnyitása; a kiválasztott File-t adja vissza (vagy null-t). */

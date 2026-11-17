@@ -79,6 +79,11 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
   Képernyő ébren tartása: ahol nem támogatott (pl. iOS 16.4 előtt), érthető üzenet. Háttérképek ArrayBuffer-ként
   tárolódnak (egyes WebKit-változatok Blob-ot nem tudnak IndexedDB-be menteni; a régi Blob-os képek is olvashatók).
   iPhone/iPad Safariban, telepítés nélkül egyszeri tipp: „Megosztás → Főképernyőhöz adás” (`js/iostip.js`).
+- Háttérképek (`js/image.js`, 1.8.2): nincs fájlméret-korlát; a formátum és a méret a fájl fejlécéből derül ki, a kép
+  már kicsinyítve nyílik meg (`createImageBitmap` + `resizeWidth/resizeHeight`), így az 50–200 MP-es és panorámafotók
+  sem fogyasztják el a tablet memóriáját; az EXIF-tájolás megmarad. Hibánál magyar üzenet a valódi okkal (túl nagy kép,
+  HEIC/RAW/TIFF formátum JPG-tanáccsal, kevés hely) és kis betűvel a technikai hibanév; a korábbi kép megmarad.
+- H/B jelölés váltása előtt figyelmeztetés (Mégse / Váltás) – a Beállításokban és az újranyitott üdvözlőben is.
 - Új dal: „Beírás / bemásolás”, „Fotózás füzetből” (Tesseract, magyar „best” csomag, teljesen a készüléken, offline),
   „Fájlból”
 - Saját háttér a dalszöveg mögött (állítható sötétítéssel) és külön saját kezdőkép
@@ -104,6 +109,7 @@ js/backup.js         – export / import / pillanatképek
 js/wakelock.js       – képernyő ébren tartása
 js/dnd.js            – húzásos átrendezés automatikus görgetéssel
 js/components.js     – közös elemek (dalkártya, betűpanel, háttérképek)
+js/image.js          – háttérképek előkészítése (fejléc-felismerés, kicsinyítés, hibaüzenetek)
 js/views/*.js        – képernyők
 tests/               – automatikus tesztek
 tools/serve.mjs      – helyi szerver; tools/make-icons.mjs – ikonkészítő

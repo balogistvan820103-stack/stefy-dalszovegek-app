@@ -245,6 +245,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--gold); }
 .toasts { position: fixed; left: 50%; bottom: calc(var(--nav-h) + var(--safe-b) + 14px); transform: translateX(-50%); z-index: 300; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 520px); pointer-events: none; }
 .toast { pointer-events: auto; padding: 13px 16px; border-radius: 14px; background: #241d58; border: 1px solid var(--line); box-shadow: var(--shadow); font-weight: 600; opacity: 0; transform: translateY(12px); transition: opacity 0.25s, transform 0.25s; border-left: 5px solid var(--blue); }
 .toast.show { opacity: 1; transform: none; }
+.toast-detail { display: block; margin-top: 6px; font-size: 0.74rem; font-weight: 500; opacity: 0.7; overflow-wrap: anywhere; }
 .toast-success { border-left-color: var(--teal); }
 .toast-error { border-left-color: var(--red); background: #3a1430; }
 
@@ -343,20 +344,22 @@ input[type=checkbox], input[type=radio] { accent-color: var(--gold); }
 .chip.on { background: var(--c); border-color: var(--c); color: #fff; box-shadow: 0 4px 14px -6px var(--c); }
 .chip .i { width: 16px; height: 16px; }
 .chip-manage { --c: #94a3b8; }
-.list-tools { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+/* keskeny kijelzőn (pl. 360 px) a rendező sor több sorba törik, semmi nem lóg ki */
+.list-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 8px; min-width: 0; }
 .count { font-weight: 700; color: var(--muted); }
-.sort-select { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; min-height: 42px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); color: var(--gold-2); }
-.sort-select select { background: transparent; border: 0; color: var(--text); font-weight: 700; min-height: 40px; outline: none; }
+.sort-select { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 0 10px; min-height: 42px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); color: var(--gold-2); }
+.sort-select select { min-width: 0; max-width: 100%; text-overflow: ellipsis; background: transparent; border: 0; color: var(--text); font-weight: 700; min-height: 40px; outline: none; }
 .sort-select select option { background: var(--surface-solid); }
 .reorder-hint { margin-top: 6px; font-size: 0.86rem; color: var(--teal-2); display: flex; align-items: center; gap: 6px; }
 .reorder-hint .i { width: 18px; height: 18px; }
 
-.song-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
-@media (min-width: 720px) { .song-grid { grid-template-columns: 1fr 1fr; gap: 10px; } }
+/* minmax(0, 1fr): az oszlop összemehet, így egy hosszú hangszer-jegyzetsor sem tolja ki a listát */
+.song-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+@media (min-width: 720px) { .song-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
 
 .song-card {
   --accent: var(--blue);
-  position: relative; display: flex; align-items: stretch;
+  position: relative; display: flex; align-items: stretch; min-width: 0;
   min-height: 60px; border-radius: 16px;
   background: linear-gradient(100deg, color-mix(in srgb, var(--accent) 16%, transparent), rgba(255, 255, 255, 0.04) 45%);
   border: 1px solid var(--line);
