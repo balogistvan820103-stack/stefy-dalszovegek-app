@@ -5,11 +5,12 @@ import * as wake from '../wakelock.js';
 import * as backup from '../backup.js';
 import { esc, toast, confirmBox, modal, fmtDateTime, fmtBytes, debounce } from '../util.js';
 import { icon, tile } from '../icons.js';
-import { fontPanel, applyReaderStyle, lyricsHTML, mediaURL, processImage, pickFile, bgErrorToast } from '../components.js';
+import { fontPanel, applyReaderStyle, lyricsHTML, mediaURL, pickFile, chooseBackground } from '../components.js';
 import { txtImportFlow } from '../txtimport.js';
 import { applyListTitleSize } from './songs.js';
 import { INST_FIELDS, INST_KEYS, instLine } from '../inst.js';
 import { openWelcome, confirmNotationSwitch } from '../welcome.js';
+import { convertChordLines } from '../chords.js';
 
 const SAMPLE = '[Refrén]\n[F]Mindig veled a [C]színpadon,\n[Dm]fényben, dalban, [Gm]hajnalon.\nSzól a zene, száll a szó,\nveled minden olyan jó.';
 
@@ -59,6 +60,10 @@ export function settingsView(ctx) {
         <label><input type="radio" name="notation" value="intl" ${app.chordNotation === 'intl' ? 'checked' : ''}><span><b>Nemzetközi jelölés</b><br><small class="muted">B = fehér billentyű, Bb = fekete billentyű</small></span></label>
       </div>
       <p class="muted small">${icon('info')} A dalszövegben lévő B és H betűket is e szerint érti, és a transzponált akkordokat is így írja ki. A hangnemváltás dalonként mentődik; a dal elmentett szövege nem változik.</p>
+      <div class="chord-conv-all">
+        <button type="button" class="btn btn-teal btn-sm" data-act="convert-all-chords">${icon('songs')} Kézzel írt akkordsorok felismerése a dalokban</button>
+        <p class="muted small">Ha egy dalban az akkordok külön sorban, a szöveg fölött állnak (pl. „G&nbsp;&nbsp;&nbsp;C&nbsp;&nbsp;&nbsp;Am” vagy „A-moll&nbsp;&nbsp;E”), ez a szótagok fölé teszi őket, így transzponálhatók. Előtte előnézetet mutat, és pillanatkép készül, amiből vissza lehet állni.</p>
+      </div>
     </section>
 
     <section class="card set-sec">
@@ -239,16 +244,8 @@ export function settingsView(ctx) {
   paintThumb('bg-home');
 
   async function pickBg(key, label) {
-    const file = await pickFile('image/*');
-    if (!file) return;
-    try {
-      const blob = await processImage(file);
-      await store.setMedia(key, blob);
-      await paintThumb(key);
-      toast(`${label} háttérképe beállítva.`, 'success');
-    } catch (err) {
-      bgErrorToast(err);
-    }
+    // kiválasztás → azonnali beolvasás → feldolgozás → mentés (hibánál a korábbi kép marad)
+    if (await chooseBackground(key, `${label} háttérképe beállítva.`)) await paintThumb(key);
   }
   async function delBg(key, label) {
     const rec = await store.getMedia(key);
@@ -283,10 +280,12 @@ export function settingsView(ctx) {
   }
 
   async function doImport() {
-    const file = await pickFile('application/json,.json,text/plain');
-    if (!file) return;
+    let file;
     let parsed;
     try {
+      // a mentésfájl a kiválasztás pillanatában, egyszer kerül beolvasásra (backup.readFile)
+      file = await pickFile('application/json,.json,text/plain');
+      if (!file) return;
       parsed = backup.parseBackup(await backup.readFile(file));
     } catch (err) {
       await modal({ title: 'Az import nem lehetséges', body: `<p class="err-text">${esc(err.message)}</p><p class="muted">A meglévő adataid nem változtak.</p>`, buttons: [{ label: 'Rendben', value: true, kind: 'primary' }] });
@@ -338,10 +337,50 @@ export function settingsView(ctx) {
     }
   }
 
+  /** Kézzel írt akkordsorok („G   C   Am” a szöveg fölött) átalakítása az összes dalban – előnézettel, pillanatképpel. */
+  async function convertAllChords() {
+    const found = [];
+    for (const s of store.state.songs.values()) {
+      const r = convertChordLines(s.lyrics);
+      if (r.changes.length) found.push({ song: s, text: r.text, n: r.changes.length });
+    }
+    if (!found.length) {
+      toast('Nem találtam olyan dalt, amelyben kézzel írt akkordsor van (csak akkordokból álló sor a szöveg fölött).', 'info', 5000);
+      return;
+    }
+    found.sort((a, b) => a.song.title.localeCompare(b.song.title, 'hu'));
+    const lines = found.reduce((t, f) => t + f.n, 0);
+    const body = document.createElement('div');
+    body.innerHTML = `<p><span class="conv-count">${found.length} dalban ${lines} akkordsor</span> alakul át. Utána az akkordok a szótagok fölött jelennek meg, és transzponálhatók.</p>
+      <p class="small">${found.slice(0, 12).map((f) => esc(f.song.title)).join(', ')}${found.length > 12 ? ` … és még ${found.length - 12}` : ''}</p>
+      <p class="muted small">Így fog kinézni az első („${esc(found[0].song.title)}”):</p>
+      <div class="conv-preview"><div class="lyrics"></div></div>
+      <p class="muted small">${icon('info')} Előtte pillanatkép készül (Mentés, import és export alatt), amiből minden visszaállítható. Ha valamelyik akkord nem a jó szótag fölé került, a dal „Akkordozás” módjában ◀ ▶ nyilakkal arrébb tolható.</p>`;
+    applyReaderStyle(body.querySelector('.conv-preview'));
+    body.querySelector('.lyrics').innerHTML = lyricsHTML(found[0].text, store.settings('reader').highlightSections, { chords: true });
+    const ok = await modal({
+      title: 'Akkordsorok felismerése',
+      wide: true,
+      body,
+      buttons: [{ label: 'Mégse', value: null, kind: 'ghost' }, { label: `${found.length} dal átalakítása`, value: true, kind: 'primary' }],
+    });
+    if (ok !== true) return;
+    try {
+      await store.saveSnapshot('Akkordsorok átalakítása előtt');
+      const byId = new Map(found.map((f) => [f.song.id, f.text]));
+      const now = Date.now();
+      const n = await store.bulkUpdateSongs([...byId.keys()], (s) => ({ ...s, lyrics: byId.get(s.id), updatedAt: now }));
+      toast(`Kész: ${n} dalban az akkordok a szótagok fölé kerültek.`, 'success', 5000);
+      renderSnapshots();
+    } catch (e) {
+      toast(`Az átalakítás nem sikerült, a dalok nem változtak: ${e.message}`, 'error', 7000);
+    }
+  }
+
   async function renderSnapshots() {
     const box = el.querySelector('.snapshots');
     const snaps = await store.listSnapshots();
-    box.innerHTML = snaps.length ? `<h3 class="sub-head">${icon('clock')} Import előtti pillanatképek</h3>
+    box.innerHTML = snaps.length ? `<h3 class="sub-head">${icon('clock')} Pillanatképek (import és tömeges módosítás előtt)</h3>
       ${snaps.map((s) => `<div class="snap-row" data-id="${esc(s.id)}"><span><b>${esc(s.label)}</b><small>${esc(fmtDateTime(s.createdAt))} · ${s.data?.songs?.length || 0} dal, ${s.data?.setlists?.length || 0} lista</small></span>
         <button type="button" class="btn btn-ghost btn-sm" data-act="snap-restore">${icon('reset')} Visszaállítás</button></div>`).join('')}` : '';
   }
@@ -363,6 +402,7 @@ export function settingsView(ctx) {
       case 'export': doExport(false); break;
       case 'share': doExport(true); break;
       case 'import': doImport(); break;
+      case 'convert-all-chords': convertAllChords(); break;
       case 'txt-folder':
       case 'txt-files':
         if (await txtImportFlow({ folder: b.dataset.act === 'txt-folder' })) { renderSnapshots(); renderStorage(); }

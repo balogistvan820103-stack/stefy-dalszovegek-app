@@ -631,7 +631,9 @@ await test('„Akkord a sor fölött” átalakítás: a fölötte lévő szóho
   const r = convertChordLines(src);
   eq(r.text, '[Am]Csengess [E]be hozzám\n\n[C]Egy két [G]három [Am]négy öt', 'akkordok a szavak elején');
   eq(r.changes.length, 2, 'két átalakítás');
-  eq(convertChordLines('Intro: Am G\nszöveg').changes.length, 0, 'nem csak akkordokból álló sor: nem nyúl hozzá');
+  // 1.8.3: a jelöléses akkordsor („Intro: …”) is átalakul, de külön sor marad (nem olvad a szövegbe)
+  eq(convertChordLines('Intro: Am G\nszöveg').text, 'Intro: [Am] [G]\nszöveg', 'jelöléses akkordsor külön sorként');
+  eq(convertChordLines('Itt Am van G\nszöveg').changes.length, 0, 'szöveggel kevert sorhoz nem nyúl');
   eq(convertChordLines('A\nszöveg').changes.length, 0, 'egyetlen magányos betű bizonytalan: nem nyúl hozzá');
   eq(convertChordLines('Am  Dm  E\n\nszöveg').text, '[Am] [Dm] [E]\n\nszöveg', 'szöveg nélküli akkordsor → akkordsor');
   eq(convertChordLines('Am      E\nrövid').text, '[Am]rövid [E]', 'a sor végén túli akkord a sor végére');
@@ -837,7 +839,7 @@ await test('(c) Régi és új nevű mentésfájl is betöltődik; mentésfájl �
   assert(threw.includes('DalPad') && !threw.includes('STEFY'), 'hibaüzenet az új névvel');
 });
 
-await test('Mintadal: saját szöveg akkordokkal, refrénnel, hangszer-jegyzettel; törölhető', async () => {
+await test('Mintadal: ismert népdal (Tavaszi szél) akkordokkal, hangszer-jegyzettel; törölhető', async () => {
   const w = await import('../js/welcome.js');
   const { hasChords } = await import('../js/chords.js');
   const { parseLyrics } = await import('../js/lyrics.js');
@@ -846,7 +848,10 @@ await test('Mintadal: saját szöveg akkordokkal, refrénnel, hangszer-jegyzette
     const again = await w.addSampleSong();
     eq(again.id, s.id, 'nem kerül be kétszer');
     assert(s.sample && hasChords(s.lyrics), 'akkordos mintadal');
-    assert(parseLyrics(s.lyrics).some((p) => p.kind === 'ref-label'), 'van refrén');
+    eq([s.title, s.artist], ['Tavaszi szél vizet áraszt', 'magyar népdal'], 'cím és előadó');
+    const chords = [...s.lyrics.matchAll(/\[([A-H][^\]]*)\]/g)].map((m) => m[1]);
+    eq([...new Set(chords)].sort(), ['Am', 'C', 'Dm', 'E', 'G'], 'A-moll kíséret: C, G, Am, Dm, E');
+    assert(parseLyrics(s.lyrics).length > 4, 'értelmezhető dalszöveg');
     assert(s.inst.bank && s.inst.key && s.inst.tempo, 'van hangszer-jegyzet');
     await store.deleteSong(s.id);
     eq(store.state.songs.size, 0, 'törölhető');
@@ -941,6 +946,137 @@ await test('Háttérkép: érthető magyar hibaüzenetek (HEIC, nem kép, kevés
 // vissza a fő teszt-adatbázishoz
 await store.init(DB);
 
+/* ---------------- Fájlbeolvasás (1.8.3): egyszer, azonnal; NotReadableError (SD-kártya) kezelése ---------------- */
+
+const fr = await import('../js/fileread.js');
+const comp = await import('../js/components.js');
+
+// „SD-kártyás” fájl utánzása: a megadott nevű fájl beolvasása NotReadableError-ral elszáll
+const realAB = File.prototype.arrayBuffer;
+const realBlobAB = Blob.prototype.arrayBuffer;
+const realSlice = Blob.prototype.slice;
+const realRead = FileReader.prototype.readAsArrayBuffer;
+const realClick = HTMLInputElement.prototype.click;
+function breakReading(names) {
+  const fail = (f) => f instanceof File && names.includes(f.name) && !f.__mem;
+  File.prototype.arrayBuffer = function () { return fail(this) ? Promise.reject(new DOMException('A requested file could not be read', 'NotReadableError')) : realBlobAB.call(this); };
+  FileReader.prototype.readAsArrayBuffer = function (b) {
+    if (!fail(b)) return realRead.call(this, b);
+    setTimeout(() => this.onerror?.(new ProgressEvent('error')), 0);
+  };
+}
+function restoreReading() {
+  delete File.prototype.arrayBuffer;
+  FileReader.prototype.readAsArrayBuffer = realRead;
+  HTMLInputElement.prototype.click = realClick;
+}
+// a fájlválasztó helyett a sorban következő fájlt „választja ki”, és feljegyzi az accept-et
+function fakePicker(queue, accepts) {
+  HTMLInputElement.prototype.click = function () {
+    if (this.type !== 'file') return realClick.call(this);
+    accepts.push(this.getAttribute('accept'));
+    const f = queue.shift();
+    const dt = new DataTransfer();
+    if (f) dt.items.add(f);
+    this.files = dt.files;
+    setTimeout(() => this.dispatchEvent(new Event(f ? 'change' : 'cancel')), 0);
+  };
+}
+const waitFor = async (fn, ms = 4000) => {
+  for (let t = 0; t < ms; t += 50) { const v = fn(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); }
+  throw new Error('időtúllépés');
+};
+const jpeg = async (w, h, col) => { const c = new OffscreenCanvas(w, h); const x = c.getContext('2d'); x.fillStyle = col; x.fillRect(0, 0, w, h); return c.convertToBlob({ type: 'image/jpeg' }); };
+
+await test('Fájlbeolvasás: egyszer, egyben; FileReader tartalék; NotReadableError → érthető hiba', async () => {
+  const f = new File(['hello világ'], 'a.txt', { type: 'text/plain' });
+  const m = await fr.readFileOnce(f);
+  eq(await m.text(), 'hello világ', 'tartalom');
+  eq([m.name, m.type], ['a.txt', 'text/plain'], 'név és típus megmarad');
+  // csak az arrayBuffer romlik el → FileReader-rel sikerül
+  File.prototype.arrayBuffer = function () { return Promise.reject(new DOMException('x', 'NotReadableError')); };
+  try { eq(await (await fr.readFileOnce(new File(['tartalék'], 'b.txt'))).text(), 'tartalék', 'FileReader-tartalék'); } finally { delete File.prototype.arrayBuffer; }
+  breakReading(['sd.txt']);
+  let err;
+  try { await fr.readFileOnce(new File(['x'], 'sd.txt')); } catch (e) { err = e; } finally { restoreReading(); }
+  assert(fr.isReadError(err), 'FileReadError');
+  assert(/SD-kártyán/.test(err.message), 'egyszerű magyar szöveg');
+  assert(/NotReadableError/.test(err.tech), 'technikai név');
+});
+
+await test('Fájlbeolvasás: az eredeti képfájlt csak egyszer olvassa, utána a másolattal dolgozik', async () => {
+  const calls = [];
+  const orig = new File([await jpeg(300, 200, '#0a0')], 'egyszer.jpg', { type: 'image/jpeg' });
+  File.prototype.arrayBuffer = function () { calls.push(['arrayBuffer', this]); return realBlobAB.call(this); };
+  Blob.prototype.slice = function (...a) { calls.push(['slice', this]); return realSlice.apply(this, a); };
+  const accepts = [];
+  fakePicker([orig], accepts);
+  let copy;
+  try {
+    copy = await comp.pickImageFile();
+    await comp.processImage(copy);
+  } finally { Blob.prototype.slice = realSlice; restoreReading(); }
+  const onOrig = calls.filter(([, o]) => o !== copy && o.name === 'egyszer.jpg');
+  eq(onOrig.map(([k]) => k), ['arrayBuffer'], 'az eredetin csak egy teljes beolvasás');
+  eq(accepts, ['image/*'], 'először a képválasztó');
+});
+
+await test('Háttérkép: NotReadableError → hibaablak „Kiválasztás a Fájlok közül” gombbal, a korábbi kép megmarad', async () => {
+  const old = await jpeg(64, 64, '#123456');
+  await store.setMedia('bg-reader', old);
+  const oldSize = (await store.getMedia('bg-reader')).blob.size;
+  breakReading(['sd.jpg']);
+  const accepts = [];
+  const good = new File([await jpeg(1024, 1024, '#c33')], 'jo.jpg', { type: '' }); // a Fájlok közül típus nélkül is jöhet
+  fakePicker([new File([await jpeg(1024, 1024, '#c33')], 'sd.jpg', { type: 'image/jpeg' }), good], accepts);
+  try {
+    // 1) Mégse → semmi nem változik
+    const p1 = comp.chooseBackground('bg-reader', 'kész');
+    const box1 = await waitFor(() => document.querySelector('.modal'));
+    const btns = [...box1.querySelectorAll('button')].map((b) => b.textContent.trim());
+    assert(btns.includes('Kiválasztás a Fájlok közül'), `van „Kiválasztás a Fájlok közül” gomb (${btns.join(' / ')})`);
+    assert(/SD-kártyán/.test(box1.textContent) && /korábbi kép megmaradt/.test(box1.textContent), 'érthető üzenet');
+    assert(/NotReadableError/.test(box1.textContent), 'technikai hibanév');
+    [...box1.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Mégse').click();
+    eq(await p1, false, 'Mégse → nincs új kép');
+    eq((await store.getMedia('bg-reader')).blob.size, oldSize, 'a korábbi kép megmaradt');
+    await waitFor(() => !document.querySelector('.modal'));
+
+    // 2) újra SD-s kép → hibaablak → „Kiválasztás a Fájlok közül” → sima fájlválasztó → sikerül
+    fakePicker([new File([await jpeg(1024, 1024, '#c33')], 'sd.jpg', { type: 'image/jpeg' }), good], accepts);
+    const p2 = comp.chooseBackground('bg-reader', 'kész');
+    const box2 = await waitFor(() => document.querySelector('.modal'));
+    eq((await store.getMedia('bg-reader')).blob.size, oldSize, 'a hibaablak alatt is a korábbi kép van');
+    [...box2.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Kiválasztás a Fájlok közül').click();
+    eq(await p2, true, 'a Fájlok közül választott kép beállítva');
+    eq(accepts.slice(-2), ['image/*', null], 'a második választó nem csak képtípusra szűr');
+    assert((await store.getMedia('bg-reader')).blob.size !== oldSize, 'új kép mentve');
+  } finally { restoreReading(); document.querySelectorAll('.modal-backdrop').forEach((m) => m.remove()); }
+});
+
+await test('Háttérkép: a Fájlok közül választott nem-kép fájlt elutasítja, a korábbi kép marad', async () => {
+  const before = (await store.getMedia('bg-reader')).blob.size;
+  const accepts = [];
+  fakePicker([new File(['nem kép'], 'jegyzet.txt', { type: 'text/plain' })], accepts);
+  let ok;
+  try { ok = await comp.chooseBackground('bg-reader', 'kész'); } finally { restoreReading(); }
+  eq(ok, false, 'nem állít be képet');
+  eq((await store.getMedia('bg-reader')).blob.size, before, 'a korábbi kép megmaradt');
+});
+
+await test('Mentés visszaállítása és fájlimport: NotReadableError → érthető magyar hiba', async () => {
+  breakReading(['mentes.json', 'dal.txt']);
+  let e1;
+  try { await backup.readFile(new File(['{}'], 'mentes.json', { type: 'application/json' })); } catch (e) { e1 = e; }
+  const txt = await import('../js/txtimport.js');
+  let res;
+  try { res = await txt.readTxtFiles([new File(['Szöveg'], 'dal.txt', { type: 'text/plain' })]); } finally { restoreReading(); }
+  assert(e1 && /SD-kártyán/.test(e1.message) && /NotReadableError/.test(e1.message), 'mentés: érthető hiba');
+  assert(res.errors.length === 1 && /nem tudta beolvasni/.test(res.errors[0]), 'import: a fájl kimarad, érthető üzenettel');
+  eq(res.data.songs.length, 0, 'nincs hibás dal');
+});
+
+
 await test('Teljesítmény: 3000 dal keresése gyors', async () => {
   const words = ['szerelem', 'éjszaka', 'hajnal', 'tánc', 'nyár', 'csillag', 'tenger', 'szív', 'zene', 'álom'];
   const songs = [];
@@ -960,6 +1096,54 @@ await test('Teljesítmény: 3000 dal keresése gyors', async () => {
   const li = document.createElement('li');
   li.textContent = `ℹ 3000 dal: keresés ${(t1 - t0).toFixed(1)} ms, ABC-rendezés ${(t2 - t1).toFixed(1)} ms`;
   out.appendChild(li);
+});
+
+/* ---------------- Kézzel írt akkordsorok (1.8.3): magyar írásmód, elválasztók, import, tömeges átalakítás ---------------- */
+
+const ch = await import('../js/chords.js');
+
+await test('Akkordsor: magyar írásmódok (A-moll, a-moll, Fisz-moll, Esz-dúr, Cisz) felismerése', async () => {
+  const n = (t) => ch.normalizeChordToken(t);
+  eq([n('A-moll'), n('a-moll'), n('Amoll'), n('A-mol'), n('C-dúr'), n('Cdur')], ['Am', 'Am', 'Am', 'Am', 'C', 'C'], 'moll/dúr');
+  eq([n('Fisz-moll'), n('Cisz'), n('Esz-dúr'), n('Asz'), n('H-moll'), n('B-dúr')], ['F#m', 'C#', 'Eb', 'Ab', 'Hm', 'B'], 'magyar módosítók');
+  eq([n('Am'), n('F#m7'), n('D/F#'), n('Gsus4')], ['Am', 'F#m7', 'D/F#', 'Gsus4'], 'szabványos nevek változatlanok');
+  eq([n('a'), n('e'), n('Es'), n('is'), n('De'), n('Ha')], [null, null, null, null, null, null], 'hétköznapi szavak nem akkordok');
+});
+
+await test('Akkordsor: elválasztók, ismétlésjel, jelölés; nincs téves találat sima szövegen', async () => {
+  for (const l of ['G   C   Am', 'A-moll   C-moll', 'a-moll  d-moll  E', 'G - C - Am', 'G, C, Am', 'G | C | D', 'G  C  Am  (2x)', 'Intro: G D', 'Ref.: C G', 'A moll   E']) {
+    assert(ch.isPlainChordLine(l), `akkordsor: ${l}`);
+  }
+  for (const l of ['A', 'E', 'A szél fúj', 'E vers', 'Hej, de szép', 'De jó', 'Refrén:', '1.', 'Ha te tudnád', 'Esz a fene']) {
+    assert(!ch.isPlainChordLine(l), `nem akkordsor: ${l}`);
+  }
+  eq(ch.convertChordLines('A-moll     E\nSzáll a dal ma este').text, '[Am]Száll a dal [E]ma este', 'magyar írásmód a szótag fölé');
+  eq(ch.convertChordLines('G -  C   - D\nEgy  kettő három').text, '[G]Egy  [C]kettő [D]három', 'elválasztók elmaradnak');
+  eq(ch.convertChordLines('Intro: G  C  (2x)\nSzöveg').text, 'Intro: [G] [C] (2x)\nSzöveg', 'jelöléses sor külön marad');
+  eq(ch.convertChordLines('A moll   E\nSzáll a dal').text, '[Am]Száll a [E]dal', '„A moll” két szóban');
+});
+
+await test('Akkordsor: átalakítás után ugyanúgy transzponálható, mint a kézzel beírt akkord', async () => {
+  const t = ch.convertChordLines('A-moll      D-moll    E\nTavaszi szél vizet áraszt').text;
+  eq(ch.usedChords(t), ['Am', 'Dm', 'E'], 'felismert akkordok');
+  const f = ch.chordFormatter(t, 2, 'hu');
+  eq(ch.usedChords(t).map(f), ['Hm', 'Em', 'F#'], '+2 félhang');
+  const g = ch.chordFormatter(t, -2, 'hu');
+  eq(ch.usedChords(t).map(g), ['Gm', 'Cm', 'D'], '−2 félhang');
+});
+
+await test('Fájlimport: a kézzel írt akkordsorokat felismeri, és nem duplázza a régi formájú dalt', async () => {
+  const txt = await import('../js/txtimport.js');
+  const body = 'G        C        D\nEgy kis dal a nyárról\nEm       C       D     G\nszól a zene hajnalig';
+  const res = await txt.readTxtFiles([new File([body], 'Nyári dal.txt', { type: 'text/plain' })]);
+  eq(res.summary.chordSongs, 1, 'egy dalban volt akkordsor');
+  const lyr = res.data.songs[0].lyrics;
+  eq(lyr, '[G]Egy kis [C]dal a [D]nyárról\n[Em]szól a [C]zene [D]hajnalig [G]', 'akkordok a szótagok fölött');
+  // ha a dal régi (átalakítatlan) formában már megvan, az import nem hozza be újra
+  const old = await store.saveSong({ title: 'Nyári dal', lyrics: body });
+  const res2 = await txt.readTxtFiles([new File([body], 'Nyári dal.txt', { type: 'text/plain' })]);
+  eq(res2.summary.newSongs, 0, 'nem duplázódik');
+  await store.deleteSong(old.id);
 });
 
 // takarítás: a teszt-adatbázis törlése

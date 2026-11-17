@@ -195,17 +195,72 @@ export function chordParts(name, notation = 'hu') {
 
 /* ---------------- „Akkord a sor fölött” → tárolási forma ---------------- */
 
+// Magyar írásmódok kézzel írt akkordlapokon: „A-moll”, „a-moll”, „Amoll”, „A-mol”, „C-dúr”,
+// „Fisz-moll”, „Cisz”, „Esz-dúr”, „Asz” … → szabványos név (Am, C, F#m, C#, Eb, Ab).
+const HU_ACC = { isz: '#', is: '#', esz: 'b', es: 'b', sz: 'b', s: 'b', '#': '#', '♯': '#', b: 'b', '♭': 'b' };
+const HU_NAME = /^([A-Ha-h])(isz|esz|sz|is|es|s|#|♯|b|♭)?(?:-?(moll|mol|dúr|dur))?(\d*)$/i;
+
 /**
- * Csak akkordokból álló (zárójel nélküli) sor-e, pl. "Am      Dm    E".
+ * Egy kézzel írt akkord-szó szabványos neve, vagy null, ha nem akkord.
+ * A sima, már szabványos neveket (Am, F#m7, D/F#) változatlanul adja vissza.
+ */
+export function normalizeChordToken(tok) {
+  const t = String(tok ?? '').trim();
+  if (isChord(t)) return t;
+  const m = t.match(HU_NAME);
+  if (!m) return null;
+  const [, letter, acc = '', mode = '', num] = m;
+  const lower = letter === letter.toLowerCase();
+  const accKey = acc.toLowerCase();
+  // csak akkor fogadjuk el, ha egyértelműen akkord: van „moll/dúr”, vagy magyar módosító (isz/esz/sz) nagybetűvel
+  if (!mode && !(['isz', 'esz', 'sz'].includes(accKey) && !lower)) return null;
+  if (lower && !mode) return null;
+  if (['is', 'es', 's'].includes(accKey) && !mode) return null;
+  // „Esz”, „Asz” = E-bé, A-bé („Eesz” nincs); „Hesz” helyett a magyarban B
+  const out = letter.toUpperCase() + (HU_ACC[accKey] || '') + (/^mol/i.test(mode) ? 'm' : '') + num;
+  return isChord(out) ? out : null;
+}
+
+const SEP_TOKEN = /^[-–—|,;.:/]+$/;
+const REPEAT_TOKEN = /^\(?(?:\d+\s*[x×]|[x×]\s*\d+)\)?[.,]?$/i;
+// jelölés: a zenei szavak magukban is („Intro”, „Ref.”), a többi csak ponttal/kettősponttal/zárójelben („Vers:”, „1.”)
+const LABEL_TOKEN = /^(?:\(?(?:ref|refr|refrén|refren|intro|outro|közjáték|kozjatek|bridge|szóló|szolo|solo)\.?:?\)?|(?:kj|átvezetés|atvezetes|vége|vege|befejezés|befejezes|előjáték|elojatek|utójáték|utojatek|vers|versszak|\d+)(?:\.:?|:)|\((?:kj|vers|versszak|vége|vege|\d+\.?)\))$/i;
+const MODE_TOKEN = /^-?(moll|mol|dúr|dur)$/i;
+
+/**
+ * Akkordsor elemzése: { chords: [{ col, name }], extras } vagy null, ha nem akkordsor.
+ * Akkordsor: csak akkordokból áll, köztük lehetnek elválasztók („-”, „|”, „,”), ismétlésjel („2x”, „(x2)”)
+ * és rövid jelölés („Intro:”, „Ref.:”). extras = van-e benne ismétlésjel vagy jelölés.
  * Ha nem biztos (pl. egyetlen magányos betű: „A”, „E”), nem tekinti akkordsornak.
  */
+export function analyzeChordLine(line) {
+  const src = expandTabs(String(line ?? ''));
+  if (!src.trim() || src.includes('[') || src.includes(']')) return null;
+  const chords = [];
+  let extras = false;
+  let seps = 0;
+  for (const m of src.matchAll(/\S+/g)) {
+    const raw = m[0];
+    const last = chords[chords.length - 1];
+    if (MODE_TOKEN.test(raw) && last && !last.moded) { // „A moll” két szóban
+      const n = normalizeChordToken(`${last.raw}-${raw.replace(/^-/, '')}`);
+      if (n) { last.name = n; last.moded = true; continue; }
+    }
+    const core = raw.replace(/[,;]+$/, '');
+    const name = normalizeChordToken(core);
+    if (name) { chords.push({ col: m.index, name, raw: core }); continue; }
+    if (SEP_TOKEN.test(raw)) { seps++; continue; }
+    if (REPEAT_TOKEN.test(raw) || LABEL_TOKEN.test(raw)) { extras = true; continue; }
+    return null;
+  }
+  if (!chords.length) return null;
+  if (chords.length === 1 && !extras && !seps && /^[A-H]$/.test(chords[0].raw)) return null;
+  return { chords: chords.map(({ col, name }) => ({ col, name })), extras };
+}
+
+/** Csak akkordokból álló (zárójel nélküli) sor-e, pl. "Am      Dm    E" vagy "A-moll - C - E (2x)". */
 export function isPlainChordLine(line) {
-  const t = String(line ?? '').trim();
-  if (!t || t.includes('[') || t.includes(']')) return false;
-  const tokens = t.split(/\s+/);
-  if (!tokens.every((x) => isChord(x))) return false;
-  if (tokens.length === 1 && /^[A-H]$/.test(tokens[0])) return false;
-  return true;
+  return analyzeChordLine(line) !== null;
 }
 
 const expandTabs = (s) => {
@@ -214,19 +269,13 @@ const expandTabs = (s) => {
   return out;
 };
 
-function chordColumns(line) {
-  const out = [];
-  for (const m of expandTabs(line).matchAll(/\S+/g)) out.push({ col: m.index, name: m[0] });
-  return out;
-}
-
 /** Egy akkordsor elhelyezése az alatta lévő szövegsorban: minden akkord a fölötte lévő szóhoz kerül. */
 export function mergeChordLine(chordLine, textLine) {
   let text = expandTabs(textLine);
   const words = [...text.matchAll(/\S+/g)].map((m) => ({ s: m.index, e: m.index + m[0].length }));
   const used = new Set();
   const chords = [];
-  for (const { col, name } of chordColumns(chordLine)) {
+  for (const { col, name } of analyzeChordLine(chordLine)?.chords || []) {
     let pos;
     const w = words.find((x) => col >= x.s && col < x.e) || words.find((x) => x.s > col);
     if (!w) pos = -1; // a sor vége után
@@ -240,9 +289,25 @@ export function mergeChordLine(chordLine, textLine) {
   return buildChordLine(text, chords);
 }
 
-/** Akkordsor átalakítása szöveg nélkül: "Am   Dm  E" → "[Am] [Dm] [E]" */
+/**
+ * Akkordsor átalakítása szöveg nélkül: "Am   Dm  E" → "[Am] [Dm] [E]".
+ * Az ismétlésjel és a jelölés megmarad: "Intro: G C (2x)" → "Intro: [G] [C] (2x)"; az elválasztók elmaradnak.
+ */
 export function bracketChordLine(chordLine) {
-  return chordColumns(chordLine).map((c) => `[${c.name}]`).join(' ');
+  const a = analyzeChordLine(chordLine);
+  if (!a) return String(chordLine ?? '');
+  const out = [];
+  const src = expandTabs(String(chordLine));
+  const byCol = new Map(a.chords.map((c) => [c.col, c.name]));
+  let skipMode = false;
+  for (const m of src.matchAll(/\S+/g)) {
+    if (byCol.has(m.index)) { out.push(`[${byCol.get(m.index)}]`); skipMode = true; continue; }
+    if (skipMode && MODE_TOKEN.test(m[0])) { skipMode = false; continue; } // a „moll” már a névben van
+    skipMode = false;
+    if (SEP_TOKEN.test(m[0])) continue;
+    out.push(m[0]);
+  }
+  return out.join(' ');
 }
 
 /**
@@ -256,9 +321,11 @@ export function convertChordLines(text) {
   const changes = [];
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    if (!isPlainChordLine(l)) { out.push(l); continue; }
+    const a = analyzeChordLine(l);
+    if (!a) { out.push(l); continue; }
     const next = lines[i + 1];
-    const nextIsText = next !== undefined && next.trim() && !isPlainChordLine(next) && !hasChords(next)
+    // ismétlésjeles / jelöléses sor („Intro: G C”, „G C (2x)”) külön akkordsor marad, nem olvad a szövegbe
+    const nextIsText = !a.extras && next !== undefined && next.trim() && !isPlainChordLine(next) && !hasChords(next)
       && !/^\s*\[[^\]]*\]\s*$/.test(next);
     if (nextIsText) {
       const merged = mergeChordLine(l, next);

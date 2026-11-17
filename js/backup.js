@@ -2,8 +2,9 @@
 
 import * as store from './store.js';
 import { uid, norm, todayISO } from './util.js';
-import { normShift } from './chords.js';
+import { normShift, convertChordLines } from './chords.js';
 import { cleanInst } from './inst.js';
+import { readFileOnce } from './fileread.js';
 
 export class ImportError extends Error {}
 
@@ -69,7 +70,13 @@ export async function readFile(file) {
   if (!file) throw new ImportError('Nem választottál ki fájlt.');
   if (file.size > MAX_FILE) throw new ImportError('A fájl túl nagy (legfeljebb 200 MB lehet).');
   if (file.size === 0) throw new ImportError('A fájl üres.');
-  try { return await file.text(); } catch { throw new ImportError('A fájlt nem sikerült beolvasni.'); }
+  // egyszer, egyben beolvasva (arrayBuffer, ha kell FileReader) – SD-kártyás fájloknál is
+  let mem;
+  try { mem = await readFileOnce(file); } catch (e) {
+    throw new ImportError(`${e.message} (technikai hiba: ${e.tech || e.name})`);
+  }
+  const bytes = new Uint8Array(await mem.arrayBuffer());
+  return new TextDecoder('utf-8').decode(bytes);
 }
 
 /**
@@ -202,7 +209,8 @@ function dataURLToBlob(dataURL) {
 }
 
 // azonos cím + azonos szöveg = ugyanaz a dal (az előadó hiánya pl. TXT-importnál ne okozzon duplikátumot)
-const contentKey = (s) => `${norm(s.title).trim()}\u0000${norm(s.lyrics).replace(/\s+/g, ' ').trim()}`;
+// az „akkord a sor fölött” formájú és a már átalakított változat azonos dalnak számít (nem duplázódik)
+const contentKey = (s) => `${norm(s.title).trim()}\u0000${norm(convertChordLines(s.lyrics).text).replace(/\s+/g, ' ').trim()}`;
 
 /**
  * Importterv: mode = 'keep' | 'append' | 'replace'

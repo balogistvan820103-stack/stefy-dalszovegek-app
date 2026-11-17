@@ -7,7 +7,8 @@ import { parseLyrics, markRefrain } from './lyrics.js';
 import { parseChordLine, isChordOnlyLine, hasChords, chordFormatter } from './chords.js';
 import { isPlayed } from './night.js';
 import { instLine } from './inst.js';
-import { describeImageError } from './image.js';
+import { describeImageError, processImage } from './image.js';
+import { readFileOnce, isReadError, NOT_READABLE_IMAGE } from './fileread.js';
 
 /** A dal hangszer-jegyzetsora a Beállítások szerint ('' ha ki van kapcsolva vagy nincs kitöltve). */
 export function songInstLine(song, shift) {
@@ -240,7 +241,7 @@ store.onChange((what) => {
 });
 
 // A képfeldolgozás (fejléc-felismerés, kicsinyített megnyitás, hibaüzenetek) az image.js-ben van.
-export { processImage } from './image.js';
+export { processImage };
 
 /** Háttérkép-hiba kijelzése: magyar ok + „A korábbi kép megmaradt.” + kis betűs technikai hibanév. */
 export function bgErrorToast(err) {
@@ -248,18 +249,85 @@ export function bgErrorToast(err) {
   toast(`${text} A korábbi kép megmaradt.`, 'error', 9000, { detail: tech ? `technikai hiba: ${tech}` : '' });
 }
 
-/** Fájlválasztó megnyitása; a kiválasztott File-t adja vissza (vagy null-t). */
-export function pickFile(accept) {
-  return new Promise((resolve) => {
+/**
+ * Fájlválasztó megnyitása; a kiválasztott File-t adja vissza (vagy null-t).
+ * read: true → a fájlt a kiválasztás pillanatában, EGYSZER, egyben beolvassa (readFileOnce),
+ * és a memóriabeli másolatot adja vissza; beolvasási hibánál FileReadError-ral utasít el.
+ * Üres accept = sima fájlválasztó (Androidon nem a rendszer képválasztója nyílik meg).
+ * capture: kamera (pl. 'environment') a fotózáshoz.
+ */
+export function pickFile(accept, { read = false, readMessage, capture = null } = {}) {
+  return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = accept;
+    if (accept) input.accept = accept;
+    if (capture) input.setAttribute('capture', capture);
     input.style.display = 'none';
-    input.addEventListener('change', () => { resolve(input.files?.[0] || null); input.remove(); }, { once: true });
+    input.addEventListener('change', () => {
+      const f = input.files?.[0] || null;
+      input.remove();
+      if (!f || !read) { resolve(f); return; }
+      readFileOnce(f, readMessage ? { message: readMessage } : undefined).then(resolve, reject);
+    }, { once: true });
     input.addEventListener('cancel', () => { resolve(null); input.remove(); }, { once: true });
     document.body.appendChild(input);
     input.click();
   });
+}
+
+/**
+ * Hibaablak, ha a kiválasztott képet a böngésző nem tudta beolvasni (pl. SD-kártyáról).
+ * Visszaad: true, ha a felhasználó a „Kiválasztás a Fájlok közül” gombot nyomta.
+ */
+export async function notReadableDialog(err, { keepNote = 'A korábbi kép megmaradt.' } = {}) {
+  const res = await modal({
+    title: 'A képet nem sikerült beolvasni',
+    body: `<p>${esc(err.message || NOT_READABLE_IMAGE)}</p>${keepNote ? `<p class="muted">${esc(keepNote)}</p>` : ''}
+      <p class="muted small">technikai hiba: ${esc(err.tech || err.name || 'NotReadableError')}</p>`,
+    buttons: [
+      { label: 'Mégse', value: false, kind: 'ghost' },
+      { label: 'Kiválasztás a Fájlok közül', value: 'files', kind: 'primary' },
+    ],
+  });
+  return res === 'files';
+}
+
+/**
+ * Kép kiválasztása és azonnali, egyszeri beolvasása. Ha a beolvasás nem sikerül, hibaablak jön
+ * „Kiválasztás a Fájlok közül” gombbal – az nem csak képtípusra szűrő (sima) fájlválasztót nyit;
+ * hogy a választott fájl kép-e, azt a további feldolgozás ugyanúgy ellenőrzi.
+ * Visszaad: memóriabeli File, vagy null (mégse).
+ */
+export async function pickImageFile({ capture = null, keepNote } = {}) {
+  let accept = 'image/*';
+  for (;;) {
+    try {
+      return await pickFile(accept, { read: true, readMessage: NOT_READABLE_IMAGE, capture });
+    } catch (err) {
+      if (!isReadError(err)) throw err;
+      if (!(await notReadableDialog(err, keepNote === undefined ? undefined : { keepNote }))) return null;
+      accept = ''; // Fájlok közül: nincs képtípus-szűrés, kamera sem
+      capture = null;
+    }
+  }
+}
+
+/**
+ * Háttérkép kiválasztása → beolvasás → feldolgozás → mentés. Bármilyen hibánál a korábbi kép marad.
+ * Visszaad: true, ha új kép lett beállítva.
+ */
+export async function chooseBackground(key, okMessage) {
+  try {
+    const file = await pickImageFile();
+    if (!file) return false;
+    const blob = await processImage(file);
+    await store.setMedia(key, blob);
+    toast(okMessage, 'success');
+    return true;
+  } catch (err) {
+    bgErrorToast(err);
+    return false;
+  }
 }
 
 /* ---------------- Betűstílus-panel (olvasóban és beállításokban) ---------------- */

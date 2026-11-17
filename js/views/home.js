@@ -3,7 +3,7 @@
 import * as store from '../store.js';
 import { esc, clamp, toast, confirmBox, fmtISODate } from '../util.js';
 import { icon, tile } from '../icons.js';
-import { mediaURL, processImage, pickFile, songCardHTML, bindFavButtons, bgErrorToast } from '../components.js';
+import { mediaURL, songCardHTML, bindFavButtons, chooseBackground } from '../components.js';
 
 const KEYS = ['title', 'subtitle', 'slogan'];
 const LABELS = { title: 'Főcím', subtitle: 'Alcím', slogan: 'Szlogen' };
@@ -144,16 +144,8 @@ export async function homeView(ctx) {
       ctx.go('#/', { replace: true });
     }
     if (act === 'bg-pick') {
-      const file = await pickFile('image/*');
-      if (!file) return;
-      try {
-        const blob = await processImage(file);
-        await store.setMedia('bg-home', blob);
-        await heroBg(el.querySelector('.hero-bg'));
-        toast('Kezdőképernyő háttérképe beállítva.', 'success');
-      } catch (err) {
-        bgErrorToast(err);
-      }
+      // kiválasztás → azonnali beolvasás → feldolgozás → mentés (hibánál a korábbi kép marad)
+      if (await chooseBackground('bg-home', 'Kezdőképernyő háttérképe beállítva.')) await heroBg(el.querySelector('.hero-bg'));
     }
     if (act === 'bg-del') {
       if (await confirmBox('Háttérkép törlése', 'Törlöd a kezdőképernyő saját háttérképét? (A dalszöveg háttere nem változik.)', { okLabel: 'Törlés', danger: true })) {

@@ -63,6 +63,11 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
   koppintás egy szóra → akkordválasztó (alaphang, fajta, basszus, a dalban már használtak), ◀ ▶ betűnként, törlés,
   visszavonás. Szerkesztőben „Akkordsorok átalakítása” (akkord a sor fölött → tárolási forma) előnézettel.
   A keresést és a dalkártyákat az akkordok nem zavarják.
+- Kézzel írt akkordsorok (1.8.3): a csak akkordokból álló sort a szöveg fölött felismeri magyar írásmóddal is
+  („A-moll”, „a-moll”, „Fisz-moll”, „Esz-dúr”, „A moll”), elválasztókkal („G - C”, „G, C”, „G | C”), ismétlésjellel
+  („(2x)”) és jelöléssel („Intro:”, „Ref.:”); a jelöléses sor külön akkordsor marad. Fájlimportnál magától átalakítja
+  (az előnézet megmondja, hány dalban), a meglévő dalokhoz Beállítások → Akkordok → „Kézzel írt akkordsorok
+  felismerése a dalokban” (előnézet + pillanatkép). Az átalakított és a régi formájú dal importkor nem duplázódik.
 - Hangszer-jegyzet dalonként (`js/inst.js`): hangnem, tempó (BPM), style / ritmus, regisztráció (bank + gomb 1–10),
   megjegyzés – a szerkesztő lenyitható részében, mind nem kötelező (bármilyen billentyűs hangszerhez). Üres hangnemnél
   javaslat az akkordokból (egy koppintással elfogadható). Egysoros jegyzetsor a listákban a dalcím alatt, fellépés módban
@@ -70,7 +75,8 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
   a mentett hangnem nem változik. A style és a bank neve kereshető. Beállításokban ki/be és mezőnként választható.
 - Üdvözlő (`js/welcome.js`): csak teljesen új, üres felhasználónál (nincs dal, lista, címke, kép, mentett beállítás);
   zenekarnév → kezdőkép főcíme, akkordjelölés, dalok bevitele, mentés fontossága; minden lépés kihagyható; a végén
-  kérhető saját, kitalált szövegű mintadal (akkordok, refrén, hangszer-jegyzet), az olvasóban egy koppintással törölhető.
+  kérhető mintadal: a „Tavaszi szél vizet áraszt” népdal (közkincs; A-moll, C–G–Am–Dm–E akkordok, hangszer-jegyzet),
+  az olvasóban egy koppintással törölhető.
   Beállítások → Névjegy → „Üdvözlő újra megnyitása” (a meglévő adatokhoz nem nyúl).
 - Semleges kezdőkép új felhasználóknak. A meglévő felhasználók kezdőképét (pl. STEFY-BAND) az 1.8.0 első
   indításakor elmenti (`store.js` – `migrate`), így az nem változik.
@@ -83,6 +89,10 @@ A service worker, az offline indítás és a képernyő ébren tartása csak **h
   már kicsinyítve nyílik meg (`createImageBitmap` + `resizeWidth/resizeHeight`), így az 50–200 MP-es és panorámafotók
   sem fogyasztják el a tablet memóriáját; az EXIF-tájolás megmarad. Hibánál magyar üzenet a valódi okkal (túl nagy kép,
   HEIC/RAW/TIFF formátum JPG-tanáccsal, kevés hely) és kis betűvel a technikai hibanév; a korábbi kép megmarad.
+- Fájlbeolvasás (`js/fileread.js`, 1.8.3): a kiválasztott fájl azonnal, egyszer, egyben kerül a memóriába
+  (`arrayBuffer`, ha nem megy, `FileReader`); minden további lépés ebből a másolatból dolgozik (háttérkép, galériás
+  fotózás, fájlimport, mentés visszaállítása). Ha a beolvasás „NotReadableError”-ral elszáll (Androidon főleg
+  SD-kártyáról), hibaablak „Kiválasztás a Fájlok közül” gombbal: ez nem csak képtípusra szűrő, sima fájlválasztót nyit.
 - H/B jelölés váltása előtt figyelmeztetés (Mégse / Váltás) – a Beállításokban és az újranyitott üdvözlőben is.
 - Új dal: „Beírás / bemásolás”, „Fotózás füzetből” (Tesseract, magyar „best” csomag, teljesen a készüléken, offline),
   „Fájlból”
@@ -110,6 +120,7 @@ js/wakelock.js       – képernyő ébren tartása
 js/dnd.js            – húzásos átrendezés automatikus görgetéssel
 js/components.js     – közös elemek (dalkártya, betűpanel, háttérképek)
 js/image.js          – háttérképek előkészítése (fejléc-felismerés, kicsinyítés, hibaüzenetek)
+js/fileread.js       – kiválasztott fájlok azonnali, egyszeri beolvasása (SD-kártyás NotReadableError kezelése)
 js/views/*.js        – képernyők
 tests/               – automatikus tesztek
 tools/serve.mjs      – helyi szerver; tools/make-icons.mjs – ikonkészítő

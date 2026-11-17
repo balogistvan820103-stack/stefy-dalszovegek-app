@@ -6,37 +6,33 @@ import * as store from './store.js';
 import { esc, toast, confirmBox } from './util.js';
 import { icon } from './icons.js';
 
-export const SAMPLE_TITLE = 'DalPad mintadal';
+export const SAMPLE_TITLE = 'Tavaszi szél vizet áraszt';
+export const SAMPLE_ARTIST = 'magyar népdal';
 
-// Teljesen saját, erre a célra kitalált szöveg (nem létező dal szövege).
+// Ismert magyar népdal: a népdalok szövege és dallama közkincs (nem áll szerzői jogi védelem
+// alatt), így az alkalmazásban szabadon közölhető. Akkordok: A-moll, a közismert C – G – Am – Dm – E
+// kísérettel (nyilvános akkordlap alapján), szintetizátoron is jól szól.
 export const SAMPLE_LYRICS = `[1. versszak]
-[C]Hangol a [G]banda, a [Am]terem még [F]csendes,
-[C]kávé a [G]pulton, a [F]mikrofon [G]vár,
-[C]minden kis [G]lapon a [Am]sorrend is [F]rendes,
-[C]este ma [G]újra a [F]szín[G]padon [C]állsz.
-
-[Refrén]
-[F]Szólj, dal, [G]szólj, ez a [C]mi esténk [Am]ma,
-[F]akkord a [G]szó fölött, [C]kéznél a [Am]lap,
-[F]lapozz, ha [G]kell, a pedál [C]vigyáz [Am]ránk,
-[F]reggelig [G]tart ez a [C]nap.
+[C]Tavaszi szél [G]vizet [C]áraszt,
+[C]vi[G]rágom, [C]vi[G]rágom,
+[C]minden madár [G]társat [Am]választ,
+[Dm]vi[E]rágom, [Am]virágom.
 
 [2. versszak]
-[C]Akkordot [G]koppintasz, [Am]hangnemet [F]váltasz,
-[C]feljebb egy [G]fél hanggal, [F]ha úgy kí[G]vánod,
-[C]minden a [G]helyén, ha [Am]újra ki[F]lépsz,
-[C]holnap is [G]itt lesz a [F]dalok [G]világ[C]a.`;
+[C]Hát én immár [G]kit vá[C]lasszak,
+[C]vi[G]rágom, [C]vi[G]rágom?
+[C]Te engemet, [G]én té[Am]gedet,
+[Dm]vi[E]rágom, [Am]virágom.`;
 
-export const SAMPLE_INST = { key: 'C', tempo: 112, style: '8Beat', bank: 'Minta', button: 1, memo: 'mintadal – nyugodtan töröld' };
+export const SAMPLE_INST = { key: 'Am', tempo: 96, style: 'Folk / lassú', bank: 'Minta', button: 1, memo: 'mintadal – nyugodtan töröld' };
 
 /** A mintadal felvétele (ha még nincs). Visszaad: a dal. */
 export async function addSampleSong() {
   const ex = [...store.state.songs.values()].find((s) => s.sample);
   if (ex) return ex;
-  return store.saveSong({ title: SAMPLE_TITLE, artist: 'DalPad', lyrics: SAMPLE_LYRICS, inst: SAMPLE_INST, sample: true });
+  return store.saveSong({ title: SAMPLE_TITLE, artist: SAMPLE_ARTIST, lyrics: SAMPLE_LYRICS, inst: SAMPLE_INST, sample: true });
 }
 
-/** Kell-e megmutatni induláskor: csak új, üres felhasználónál, és ha még nem zárta le. */
 /**
  * Figyelmeztetés a H/B jelölés váltása előtt (a már beírt B akkordok jelentése megváltozik).
  * true = „Váltás”, false = „Mégse” (ilyenkor semmi nem változhat).
@@ -47,6 +43,7 @@ export function confirmNotationSwitch() {
     { okLabel: 'Váltás', cancelLabel: 'Mégse' });
 }
 
+/** Kell-e megmutatni induláskor: csak új, üres felhasználónál, és ha még nem zárta le. */
 export function shouldShowWelcome() {
   return store.state.fresh && !store.settings('app').welcomeDone;
 }
@@ -102,7 +99,7 @@ export function openWelcome({ reopen = false } = {}) {
       return `<h2 class="modal-title">Mentsd rendszeresen!</h2>
         <p>${icon('shield')} A dalaid <b>csak ezen a készüléken</b> vannak, ezért érdemes rendszeresen mentést készíteni: <b>Beállítások → Mentés, import és export → Teljes mentés letöltése</b>, és a fájlt a telefonon kívül is eltenni.</p>
         <label class="switch-row"><input type="checkbox" name="wl-sample" ${st.sample ? 'checked' : ''}><span class="switch"></span>
-          <span>Kérek egy <b>mintadalt</b>, ami megmutatja az akkordokat, a refrénkiemelést és a hangszer-jegyzetet (egy koppintással törölhető)</span></label>`;
+          <span>Kérek egy <b>mintadalt</b>, – a <b>„Tavaszi szél vizet áraszt”</b> népdalt akkordokkal és hangszer-jegyzettel (egy koppintással törölhető)</span></label>`;
     };
 
     const render = () => {

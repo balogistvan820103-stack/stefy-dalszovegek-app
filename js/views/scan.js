@@ -6,7 +6,8 @@ import * as store from '../store.js';
 import * as ocr from '../ocr.js';
 import { esc, toast, confirmBox, clamp } from '../util.js';
 import { icon, tile } from '../icons.js';
-import { emptyState } from '../components.js';
+import { emptyState, pickImageFile } from '../components.js';
+import { sniffImage } from '../image.js';
 import { txtImportFlow } from '../txtimport.js';
 
 /** A még el nem mentett, fotózott dalok (a képernyők közti váltást túlélik, újratöltést nem). */
@@ -64,23 +65,11 @@ export function newSongView(ctx) {
 
 /* ---------------- Képkezelés ---------------- */
 
-function pickImage(camera) {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    if (camera) input.setAttribute('capture', 'environment');
-    input.style.display = 'none';
-    input.addEventListener('change', () => { resolve(input.files?.[0] || null); input.remove(); }, { once: true });
-    input.addEventListener('cancel', () => { resolve(null); input.remove(); }, { once: true });
-    document.body.appendChild(input);
-    input.click();
-  });
-}
-
 /** Fájl → vászon (a fotó elforgatási adatát figyelembe véve), legfeljebb maxSide képponttal. */
 async function fileToCanvas(file, maxSide = 3200) {
-  if (file.type && !file.type.startsWith('image/')) throw new Error('A kiválasztott fájl nem kép.');
+  // a „Fájlok közül” választott fájl típusa üres vagy általános is lehet – a fejlécből döntünk
+  const info = await sniffImage(file);
+  if (info.format === 'unknown' && file.type && !file.type.startsWith('image/')) throw new Error('A kiválasztott fájl nem kép. Válassz JPG, PNG vagy WEBP képet.');
   let src; let w; let h; let done = () => {};
   try {
     src = await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -183,9 +172,11 @@ export function scanView(ctx) {
   }
 
   async function loadImage(camera) {
-    const file = await pickImage(camera);
-    if (!file || !alive) return;
+    let file;
     try {
+      // kiválasztás után azonnal, egyszer beolvasva; ha nem megy, „Kiválasztás a Fájlok közül” gomb
+      file = await pickImageFile({ capture: camera ? 'environment' : null, keepNote: '' });
+      if (!file || !alive) return;
       work = await fileToCanvas(file);
       crop = { x0: 0.02, y0: 0.02, x1: 0.98, y1: 0.98 };
       showCrop();

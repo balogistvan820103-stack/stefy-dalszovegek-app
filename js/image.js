@@ -1,6 +1,9 @@
 // Háttérképek előkészítése: a fájl fejlécének felismerése, kicsinyített megnyitás, JPEG-be tömörítés,
 // és érthető magyar hibaüzenetek (a valódi okkal + a technikai hibanévvel).
 // Nincs külső könyvtár: amit a böngésző nem tud megnyitni (pl. HEIC, RAW), arra tanácsot adunk.
+// A processImage a kiválasztáskor már egyszer beolvasott, memóriabeli másolatot kapja (fileread.js).
+
+import { NOT_READABLE_IMAGE } from './fileread.js';
 
 /** Hiba, amelynek az üzenete már magyar, a felhasználónak szól; a tech a technikai hibanév. */
 export class ImageError extends Error {
@@ -200,7 +203,7 @@ export async function processImage(file, maxSide = 2400) {
   if (file.size === 0) throw new ImageError('A kiválasztott kép üres vagy sérült (0 bájt).', 'empty-file');
   let info;
   try { info = await sniffImage(file); } catch (e) {
-    throw new ImageError('A képfájlt nem sikerült beolvasni. Lehet, hogy a fájl már nem elérhető (pl. felhőben van és nincs letöltve). Próbáld újra, vagy válassz másik képet.', errName(e));
+    throw new ImageError(NOT_READABLE_IMAGE, errName(e));
   }
   if (info.format === 'unknown' && file.type && !file.type.startsWith('image/')) {
     throw new ImageError('A kiválasztott fájl nem kép. Válassz JPG, PNG vagy WEBP formátumú képet.', file.type);
@@ -246,7 +249,7 @@ export async function processImage(file, maxSide = 2400) {
  * Visszaad: { text, tech }.
  */
 export function describeImageError(err) {
-  if (err instanceof ImageError) return { text: err.message, tech: err.tech };
+  if (err instanceof ImageError || err?.name === 'FileReadError') return { text: err.message, tech: err.tech };
   const name = errName(err);
   if (/quota/i.test(`${err?.name} ${err?.message}`)) {
     return { text: 'Kevés a szabad hely a készüléken, ezért a képet nem sikerült elmenteni. Szabadíts fel helyet (pl. törölj régi fotókat, videókat vagy nem használt alkalmazásokat), és próbáld újra.', tech: name };

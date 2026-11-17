@@ -17,7 +17,7 @@ import * as night from './night.js';
 import { shouldShowWelcome, openWelcome } from './welcome.js';
 import { showIosTip } from './iostip.js';
 
-export const APP_VERSION = '1.8.2';
+export const APP_VERSION = '1.8.3';
 
 const routes = [
   { re: /^\/(?:home)?$/, view: homeView },

@@ -4,8 +4,10 @@
 import * as backup from './backup.js';
 import * as store from './store.js';
 import { uid, norm, esc, toast, modal } from './util.js';
-import { tile } from './icons.js';
+import { tile, icon } from './icons.js';
 import { DOC_EXT, documentToText } from './docread.js';
+import { convertChordLines } from './chords.js';
+import { readFileOnce } from './fileread.js';
 
 // TXT + Word (docx, doc) + OpenDocument + RTF; a MIME-típusok az Android fájlválasztó miatt kellenek
 const ACCEPT = '.txt,.docx,.doc,.odt,.rtf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.oasis.opendocument.text,application/rtf,text/rtf';
@@ -65,18 +67,28 @@ export async function readTxtFiles(files) {
   const songs = [];
   const errors = [];
   let order = 0;
+  let chordSongs = 0; // ennyi dalban volt kézzel írt akkordsor (átalakítva)
   // ABC-sorrendben (mappán belül is), hogy kiszámítható legyen
   txt.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, 'hu'));
-  for (const f of txt) {
+  for (const orig of txt) {
     try {
-      const doc = isDoc(f);
-      if (f.size > (doc ? 30 : 2) * 1024 * 1024) { errors.push(`${f.name}: túl nagy`); continue; }
+      const doc = isDoc(orig);
+      if (orig.size > (doc ? 30 : 2) * 1024 * 1024) { errors.push(`${orig.name}: túl nagy`); continue; }
+      // egyszer, egyben beolvasva – a további lépések (pl. RTF-nél kettő) már a memóriabeli másolatot használják
+      let f;
+      try { f = await readFileOnce(orig); } catch (e) {
+        errors.push(`${orig.name}: a böngésző nem tudta beolvasni (SD-kártyán lévő fájloknál gyakori – másold át a belső tárhelyre) [${e.tech}]`);
+        continue;
+      }
       let text = (doc ? await documentToText(f, decodeText) : await decodeText(f)).replace(/\r\n?/g, '\n').replace(/^(?:[ \t]*\n)+/, '');
       if (!text.trim()) { errors.push(`${f.name}: üres dokumentum, kimarad`); continue; }
       const title = titleFromName(f.name);
       // ha a szöveg első sora maga a cím, azt nem duplázzuk
       const lines = text.split('\n');
       if (lines.length > 1 && norm(lines[0].trim()) === norm(title)) text = lines.slice(1).join('\n');
+      // kézzel írt akkordsorok (pl. „G    C    Am” a szöveg fölött) → az akkordok a szótagok fölé, transzponálhatók
+      const conv = convertChordLines(text);
+      if (conv.changes.length) { text = conv.text; chordSongs++; }
       const tagIds = [];
       const parts = (f.webkitRelativePath || '').split('/').slice(1, -1); // a gyökérmappa nem címke
       for (const p of parts) {
@@ -89,7 +101,7 @@ export async function readTxtFiles(files) {
       const now = Date.now();
       songs.push({ id: uid('s_'), title, artist: '', lyrics: store.cleanLyrics(text), tagIds, favorite: false, order: ++order, createdAt: now, updatedAt: now, lastOpenedAt: null });
     } catch (e) {
-      errors.push(`${f.name}: ${e.message || 'nem olvasható'}`);
+      errors.push(`${orig.name}: ${e.message || 'nem olvasható'}`);
     }
   }
   const tags = [...tagsByName.values()];
@@ -107,6 +119,7 @@ export async function readTxtFiles(files) {
       newTags: plan ? plan.result.tagsAdded : 0,
       tagNames: tags.map((t) => t.name),
       sample: songs.slice(0, 6).map((s) => s.title),
+      chordSongs,
     },
   };
 }
@@ -145,6 +158,7 @@ export async function txtImportFlow({ folder = false } = {}) {
       ${s.tagNames.length ? `<p class="small">Az almappák nevéből címke lesz: ${s.tagNames.slice(0, 12).map(esc).join(', ')}${s.tagNames.length > 12 ? '…' : ''}</p>` : ''}
       ${s.sample.length ? `<p class="muted small">Például: ${s.sample.map(esc).join(', ')}…</p>` : ''}
       ${res.skippedFiles.length ? `<p class="muted small">${res.skippedFiles.length} nem támogatott fájl (pl. kép) kimarad.</p>` : ''}
+      ${s.chordSongs ? `<p class="small">${icon('songs')} <b>${s.chordSongs}</b> dalban felismertem a kézzel írt akkordsorokat: az akkordok a szótagok fölé kerülnek, és transzponálhatók. Ha egy akkord rossz szótagra esett, az „Akkordozás” módban arrébb tolható.</p>` : ''}
       ${res.errors.length ? `<p class="warn-text small">${res.errors.slice(0, 5).map(esc).join('<br>')}</p>` : ''}
       <p class="muted small">A dal címe a fájl neve lesz, a szövege a fájl tartalma. A teljesen azonos dalok nem kerülnek be újra. Import előtt automatikus pillanatkép készül.</p>
     </div>`;
